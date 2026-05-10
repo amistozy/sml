@@ -26,11 +26,21 @@ pub enum SurfaceExpr {
   String(String)
   Var(String)
   If(SurfaceExpr, SurfaceExpr, SurfaceExpr)
-  Let(String, SurfaceExpr, SurfaceExpr)
-  LetAnd(ReadOnlyArray[(String, SurfaceExpr)], SurfaceExpr)
+  Block(ReadOnlyArray[SurfaceStmt])
   Fn(ReadOnlyArray[String], SurfaceExpr)
-  Do(ReadOnlyArray[SurfaceExpr])
   Call(SurfaceExpr, ReadOnlyArray[SurfaceExpr])
+} derive(Eq, Debug)
+
+///|
+pub enum SurfaceDecl {
+  Let(String, SurfaceExpr)
+  LetAnd(ReadOnlyArray[(String, SurfaceExpr)])
+} derive(Eq, Debug)
+
+///|
+pub enum SurfaceStmt {
+  Decl(SurfaceDecl)
+  Expr(SurfaceExpr)
 } derive(Eq, Debug)
 
 ///|
@@ -38,11 +48,11 @@ pub enum CoreExpr {
   Int(Int)
   Bool(Bool)
   String(String)
+  Unit
   Var(String)
   If(CoreExpr, CoreExpr, CoreExpr)
   Let(ReadOnlyArray[(String, CoreExpr)], CoreExpr)
   Fn(ReadOnlyArray[String], CoreExpr)
-  Do(ReadOnlyArray[CoreExpr])
   Call(CoreExpr, ReadOnlyArray[CoreExpr])
 } derive(Eq, Debug)
 
@@ -277,22 +287,25 @@ pub fn parse_sexp(source : String) -> SExpr raise SmlError {
 }
 
 ///|
-fn expect_symbol_atom(expr : SExpr) -> String raise SmlError {
-  match expr {
-    Atom(Symbol(name)) => name
-    _ => raise SurfaceError("expected symbol")
+fn parse_sexps(source : String) -> ReadOnlyArray[SExpr] raise SmlError {
+  let exprs = []
+  for rest = skip_ws(source[:]) {
+    match rest {
+      [] => break ReadOnlyArray::from_array(exprs)
+      _ => {
+        let (tail, expr) = parse_sexp_inner(rest)
+        exprs.push(expr)
+        continue skip_ws(tail)
+      }
+    }
   }
 }
 
 ///|
-fn parse_body(exprs : ArrayView[SExpr]) -> SurfaceExpr raise SmlError {
-  guard exprs.length() > 0 else {
-    raise SurfaceError("expected body expression")
-  }
-  let parsed = exprs.map(parse_surface_expr)
-  match parsed {
-    [expr] => expr
-    _ => Do(ReadOnlyArray::from_array(parsed))
+fn expect_symbol_atom(expr : SExpr) -> String raise SmlError {
+  match expr {
+    Atom(Symbol(name)) => name
+    _ => raise SurfaceError("expected symbol")
   }
 }
 
@@ -319,9 +332,9 @@ fn parse_bindings(
       let bindings = []
       for item in items {
         match item {
-          List(pair) if pair.length() == 2 => {
+          List(pair) if pair.length() >= 2 => {
             let name = expect_symbol_atom(pair[0])
-            let value = parse_surface_expr(pair[1])
+            let value = parse_body(pair[1:])
             bindings.push((name, value))
           }
           _ => raise SurfaceError("binding must have shape (name expr)")
@@ -330,23 +343,6 @@ fn parse_bindings(
       ReadOnlyArray::from_array(bindings)
     }
     _ => raise SurfaceError("let bindings must be a list")
-  }
-}
-
-///|
-fn parse_let_form(tail : ArrayView[SExpr]) -> SurfaceExpr raise SmlError {
-  guard tail.length() >= 2 else {
-    raise SurfaceError("let expects bindings and a body")
-  }
-  match tail[0] {
-    Atom(Symbol(name)) => {
-      guard tail.length() >= 3 else {
-        raise SurfaceError("single let expects a name, a value and a body")
-      }
-      Let(name, parse_surface_expr(tail[1]), parse_body(tail[2:]))
-    }
-    List(_) => LetAnd(parse_bindings(tail[0]), parse_body(tail[1:]))
-    _ => raise SurfaceError("let expects either a symbol or a binding list")
   }
 }
 
@@ -372,12 +368,15 @@ fn parse_special_form(
       }
       Fn(parse_params(tail[0]), parse_body(tail[1:]))
     }
-    "let" => parse_let_form(tail)
+    "let" =>
+      raise SurfaceError(
+        "let declarations are only allowed in a declaration sequence",
+      )
     "do" => {
       guard tail.length() > 0 else {
         raise SurfaceError("do expects at least one expression")
       }
-      Do(ReadOnlyArray::from_array(tail.map(parse_surface_expr)))
+      parse_body(tail)
     }
     _ => {
       let func = parse_surface_expr(Atom(Symbol(head)))
@@ -408,32 +407,111 @@ pub fn parse_surface_expr(expr : SExpr) -> SurfaceExpr raise SmlError {
 }
 
 ///|
-pub fn parse_surface(source : String) -> SurfaceExpr raise SmlError {
-  parse_surface_expr(parse_sexp(source))
+fn parse_decl(expr : SExpr) -> SurfaceDecl? raise SmlError {
+  match expr {
+    List([Atom(Symbol("let")), Atom(Symbol(name)), .. tail]) if tail.length() >
+      0 => Some(SurfaceDecl::Let(name, parse_body(tail)))
+    List([Atom(Symbol("let&")), .. bindings]) if bindings.length() > 0 =>
+      Some(
+        SurfaceDecl::LetAnd(
+          parse_bindings(List(ReadOnlyArray::from_array(bindings))),
+        ),
+      )
+    _ => None
+  }
 }
 
 ///|
-pub fn desugar(expr : SurfaceExpr) -> CoreExpr {
+fn parse_stmt(expr : SExpr) -> SurfaceStmt raise SmlError {
+  match parse_decl(expr) {
+    Some(decl) => SurfaceStmt::Decl(decl)
+    None => SurfaceStmt::Expr(parse_surface_expr(expr))
+  }
+}
+
+///|
+fn parse_block(forms : ReadOnlyArray[SExpr]) -> SurfaceExpr raise SmlError {
+  guard forms.length() > 0 else {
+    raise SurfaceError("expected at least one form")
+  }
+  if forms.length() == 1 {
+    match parse_decl(forms[0]) {
+      Some(decl) => Block([Decl(decl)])
+      None => parse_surface_expr(forms[0])
+    }
+  } else {
+    Block(forms.map(parse_stmt))
+  }
+}
+
+///|
+fn parse_body(forms : ArrayView[SExpr]) -> SurfaceExpr raise SmlError {
+  parse_block(ReadOnlyArray::from_array(forms.to_owned()))
+}
+
+///|
+pub fn parse_surface(source : String) -> SurfaceExpr raise SmlError {
+  parse_block(parse_sexps(source))
+}
+
+///|
+fn desugar_expr(expr : SurfaceExpr) -> CoreExpr {
   match expr {
     Int(value) => CoreExpr::Int(value)
     Bool(value) => CoreExpr::Bool(value)
     String(value) => CoreExpr::String(value)
     Var(name) => CoreExpr::Var(name)
     If(cond, then_branch, else_branch) =>
-      CoreExpr::If(desugar(cond), desugar(then_branch), desugar(else_branch))
-    Let(name, value, body) => {
-      let binding = [(name, desugar(value))]
-      CoreExpr::Let(ReadOnlyArray::from_array(binding), desugar(body))
-    }
-    LetAnd(bindings, body) =>
-      CoreExpr::Let(
-        bindings.map(binding => (binding.0, desugar(binding.1))),
-        desugar(body),
+      CoreExpr::If(
+        desugar_expr(cond),
+        desugar_expr(then_branch),
+        desugar_expr(else_branch),
       )
-    Fn(params, body) => CoreExpr::Fn(params, desugar(body))
-    Do(exprs) => CoreExpr::Do(exprs.map(desugar))
-    Call(func, args) => CoreExpr::Call(desugar(func), args.map(desugar))
+    Block(stmts) => desugar_block(stmts)
+    Fn(params, body) => CoreExpr::Fn(params, desugar_expr(body))
+    Call(func, args) =>
+      CoreExpr::Call(desugar_expr(func), args.map(desugar_expr))
   }
+}
+
+///|
+fn desugar_decl_to_let(decl : SurfaceDecl, body : CoreExpr) -> CoreExpr {
+  match decl {
+    SurfaceDecl::Let(name, value) => {
+      let binding = [(name, desugar_expr(value))]
+      CoreExpr::Let(ReadOnlyArray::from_array(binding), body)
+    }
+    SurfaceDecl::LetAnd(bindings) =>
+      CoreExpr::Let(
+        bindings.map(binding => (binding.0, desugar_expr(binding.1))),
+        body,
+      )
+  }
+}
+
+///|
+fn desugar_block(stmts : ReadOnlyArray[SurfaceStmt]) -> CoreExpr {
+  guard stmts.length() > 0 else { return CoreExpr::Unit }
+  let mut result = match stmts[stmts.length() - 1] {
+    SurfaceStmt::Decl(decl) => desugar_decl_to_let(decl, CoreExpr::Unit)
+    SurfaceStmt::Expr(expr) => desugar_expr(expr)
+  }
+  guard stmts.length() > 1 else { return result }
+  for i = stmts.length() - 2; i >= 0; i = i - 1 {
+    match stmts[i] {
+      SurfaceStmt::Decl(decl) => result = desugar_decl_to_let(decl, result)
+      SurfaceStmt::Expr(expr) => {
+        let binding = [("_", desugar_expr(expr))]
+        result = CoreExpr::Let(ReadOnlyArray::from_array(binding), result)
+      }
+    }
+  }
+  result
+}
+
+///|
+pub fn desugar(expr : SurfaceExpr) -> CoreExpr {
+  desugar_expr(expr)
 }
 
 ///|
@@ -441,6 +519,7 @@ fn env_empty() -> Env {
   @sorted_map.new()
 }
 
+///|
 fn env_extend(
   parent : Env,
   bindings_to_add : ReadOnlyArray[(String, Value)],
@@ -475,7 +554,7 @@ fn env_lookup(env : Env, name : String) -> Value raise SmlError {
 ///|
 fn base_env() -> Env {
   let mut env = env_empty()
-  for name in ["+", "-", "*", "/", "=", "<", ">", "<=", ">=", "not"] {
+  for name in ["+", "-", "*", "/", "=", "<", ">", "<=", ">=", "not", "println"] {
     env = env.add(name, Builtin(name))
   }
   env
@@ -591,6 +670,11 @@ fn apply_builtin(
       expect_exact_arity("not", args, 1)
       Bool(!expect_bool(args[0]))
     }
+    "println" => {
+      expect_exact_arity("println", args, 1)
+      println(args[0].to_string())
+      Unit
+    }
     _ => raise RuntimeError("unknown builtin: \{name}")
   }
 }
@@ -620,15 +704,6 @@ fn apply(func : Value, args : ReadOnlyArray[Value]) -> Value raise SmlError {
 }
 
 ///|
-fn eval_do(exprs : ReadOnlyArray[CoreExpr], env : Env) -> Value raise SmlError {
-  let mut result = Unit
-  for expr in exprs {
-    result = eval_core(expr, env~)
-  }
-  result
-}
-
-///|
 pub fn eval_core(
   expr : CoreExpr,
   env? : Env = base_env(),
@@ -637,6 +712,7 @@ pub fn eval_core(
     Int(value) => Value::Int(value)
     Bool(value) => Value::Bool(value)
     String(value) => Value::String(value)
+    Unit => Value::Unit
     Var(name) => env_lookup(env, name)
     If(cond, then_branch, else_branch) =>
       if expect_bool(eval_core(cond, env~)) {
@@ -649,7 +725,6 @@ pub fn eval_core(
       eval_core(body, env=env_extend(env, evaluated))
     }
     Fn(params, body) => Closure({ params, body, env })
-    Do(exprs) => eval_do(exprs, env)
     Call(func, args) => {
       let fun_value = eval_core(func, env~)
       let arg_values = args.map(arg => eval_core(arg, env~))

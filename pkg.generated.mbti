@@ -40,11 +40,11 @@ pub enum CoreExpr {
   Int(Int)
   Bool(Bool)
   String(String)
+  Unit
   Var(String)
   If(CoreExpr, CoreExpr, CoreExpr)
   Let(ReadOnlyArray[(String, CoreExpr)], CoreExpr)
   Fn(ReadOnlyArray[String], CoreExpr)
-  Do(ReadOnlyArray[CoreExpr])
   Call(CoreExpr, ReadOnlyArray[CoreExpr])
 } derive(Eq, @debug.Debug)
 
@@ -60,17 +60,25 @@ pub enum SExpr {
   List(ReadOnlyArray[SExpr])
 } derive(Eq, @debug.Debug)
 
+pub enum SurfaceDecl {
+  Let(String, SurfaceExpr)
+  LetAnd(ReadOnlyArray[(String, SurfaceExpr)])
+} derive(Eq, @debug.Debug)
+
 pub enum SurfaceExpr {
   Int(Int)
   Bool(Bool)
   String(String)
   Var(String)
   If(SurfaceExpr, SurfaceExpr, SurfaceExpr)
-  Let(String, SurfaceExpr, SurfaceExpr)
-  LetAnd(ReadOnlyArray[(String, SurfaceExpr)], SurfaceExpr)
+  Block(ReadOnlyArray[SurfaceStmt])
   Fn(ReadOnlyArray[String], SurfaceExpr)
-  Do(ReadOnlyArray[SurfaceExpr])
   Call(SurfaceExpr, ReadOnlyArray[SurfaceExpr])
+} derive(Eq, @debug.Debug)
+
+pub enum SurfaceStmt {
+  Decl(SurfaceDecl)
+  Expr(SurfaceExpr)
 } derive(Eq, @debug.Debug)
 
 pub enum Value {
