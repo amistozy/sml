@@ -86,11 +86,6 @@ fn render_stage(name : String, source : String) -> String raise @sml.SmlError {
 }
 
 ///|
-fn[T : @debug.Debug] print_error(err : T) -> Unit {
-  println(@debug.to_string(err))
-}
-
-///|
 fn main {
   try {
     let matches = cli_command().parse()
@@ -101,6 +96,6 @@ fn main {
     let output = render_stage(name, source)
     println(output)
   } catch {
-    err => print_error(err)
+    err => @debug.debug(err)
   }
 }
