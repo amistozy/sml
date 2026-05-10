@@ -1,6 +1,7 @@
-// import {
-//   "amistozy/sml" @lib,
-// }
+import {
+  "amistozy/sml",
+  "moonbitlang/core/env",
+}
 
 options(
   "is-main": true,

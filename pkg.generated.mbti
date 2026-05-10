@@ -1,0 +1,88 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "amistozy/sml"
+
+import {
+  "moonbitlang/core/debug",
+  "moonbitlang/core/immut/sorted_map",
+}
+
+// Values
+pub fn desugar(SurfaceExpr) -> CoreExpr
+
+pub fn eval_core(CoreExpr, env? : @sorted_map.SortedMap[String, Value]) -> Value raise SmlError
+
+pub fn parse_sexp(String) -> SExpr raise SmlError
+
+pub fn parse_surface(String) -> SurfaceExpr raise SmlError
+
+pub fn parse_surface_expr(SExpr) -> SurfaceExpr raise SmlError
+
+pub fn run(String) -> Value raise SmlError
+
+pub fn run_to_string(String) -> String raise SmlError
+
+// Errors
+pub(all) suberror SmlError {
+  ParseError(String)
+  SurfaceError(String)
+  RuntimeError(String)
+} derive(Eq, @debug.Debug)
+pub impl Show for SmlError
+
+// Types and methods
+pub struct Closure {
+  params : ReadOnlyArray[String]
+  body : CoreExpr
+  env : @sorted_map.SortedMap[String, Value]
+}
+
+pub enum CoreExpr {
+  Int(Int)
+  Bool(Bool)
+  String(String)
+  Var(String)
+  If(CoreExpr, CoreExpr, CoreExpr)
+  Let(String, CoreExpr, CoreExpr)
+  Fn(ReadOnlyArray[String], CoreExpr)
+  Do(ReadOnlyArray[CoreExpr])
+  Call(CoreExpr, ReadOnlyArray[CoreExpr])
+} derive(Eq, @debug.Debug)
+
+pub enum SAtom {
+  Int(Int)
+  Bool(Bool)
+  String(String)
+  Symbol(String)
+} derive(Eq, @debug.Debug)
+
+pub enum SExpr {
+  Atom(SAtom)
+  List(ReadOnlyArray[SExpr])
+} derive(Eq, @debug.Debug)
+
+pub enum SurfaceExpr {
+  Int(Int)
+  Bool(Bool)
+  String(String)
+  Var(String)
+  If(SurfaceExpr, SurfaceExpr, SurfaceExpr)
+  Let(ReadOnlyArray[(String, SurfaceExpr)], SurfaceExpr)
+  Fn(ReadOnlyArray[String], SurfaceExpr)
+  Do(ReadOnlyArray[SurfaceExpr])
+  Call(SurfaceExpr, ReadOnlyArray[SurfaceExpr])
+} derive(Eq, @debug.Debug)
+
+pub enum Value {
+  Int(Int)
+  Bool(Bool)
+  String(String)
+  Unit
+  Closure(Closure)
+  Builtin(String)
+}
+pub impl Show for Value
+
+// Type aliases
+
+// Traits
+
