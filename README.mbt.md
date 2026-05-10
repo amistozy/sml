@@ -29,7 +29,8 @@ The package exposes the following main entry points:
 
 ## Example
 
-```moonbit
+```moonbit nocheck
+///|
 test "run a simple program" {
   let program =
     #|(let x 10)

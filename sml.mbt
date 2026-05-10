@@ -378,11 +378,8 @@ fn parse_special_form(
       }
       parse_body(tail)
     }
-    _ => {
-      let func = parse_surface_expr(Atom(Symbol(head)))
-      let args = tail.map(parse_surface_expr)
-      Call(func, ReadOnlyArray::from_array(args))
-    }
+    _ =>
+      Call(Var(head), ReadOnlyArray::from_array(tail.map(parse_surface_expr)))
   }
 }
 
@@ -512,6 +509,11 @@ fn desugar_block(stmts : ReadOnlyArray[SurfaceStmt]) -> CoreExpr {
 ///|
 pub fn desugar(expr : SurfaceExpr) -> CoreExpr {
   desugar_expr(expr)
+}
+
+///|
+pub fn lower(source : String) -> CoreExpr raise SmlError {
+  source |> parse_surface |> desugar
 }
 
 ///|
@@ -735,7 +737,7 @@ pub fn eval_core(
 
 ///|
 pub fn run(source : String) -> Value raise SmlError {
-  source |> parse_surface |> desugar |> eval_core
+  source |> lower |> eval_core
 }
 
 ///|

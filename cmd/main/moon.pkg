@@ -1,6 +1,8 @@
 import {
   "amistozy/sml",
-  "moonbitlang/core/env",
+  "moonbitlang/core/argparse",
+  "moonbitlang/core/debug",
+  "moonbitlang/x/fs",
 }
 
 options(
