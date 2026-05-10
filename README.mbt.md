@@ -1,37 +1,46 @@
 # amistozy/sml
 
 `amistozy/sml` is an S-expression-based ML-like language implemented in
-MoonBit. In this project, `SML` stands for "S-expression-based ML-like
-language". It includes a parser, a surface syntax layer, a desugaring step,
-and a runtime evaluator. The project is useful both as a compact language
-implementation and as a playground for experimenting with parsing and
-evaluation pipelines.
+MoonBit. In this project, `SML` means "S-expression-based ML-like language",
+not Standard ML.
+
+The package is structured as a small language pipeline:
+
+- parse raw source into S-expressions
+- parse S-expressions into a surface language
+- lower surface syntax into a small core language
+- evaluate core expressions
+
+This makes the project useful both as a runnable language and as a compact
+example of parser and evaluator design in MoonBit.
 
 ## Features
 
-- Parses S-expressions into a structured AST
-- Supports integers, booleans, strings, variables, functions, calls, and `if`
-- Supports multi-form blocks and declaration sequences
-- Provides sequential `let` and parallel `let&` bindings
-- Uses lexical closures with immutable environments
-- Exposes each compilation stage as public functions
+- S-expression syntax with line comments
+- Integers, booleans, strings, variables, functions, calls, and `if`
+- Multi-form blocks
+- Sequential `let` declarations
+- Parallel `let&` declarations
+- Lexical closures with immutable environments
+- Public entry points for each compilation stage
 
 ## Public API
 
-The package exposes the following main entry points:
+The package exposes these main functions:
 
-- `parse_sexp(source)` parses raw source into `SExpr`
-- `parse_surface(source)` parses source into `SurfaceExpr`
-- `desugar(expr)` lowers surface syntax into `CoreExpr`
-- `eval_core(expr)` evaluates core expressions
-- `run(source)` parses, desugars, and evaluates the program
-- `run_to_string(source)` evaluates and renders the final value
+- `parse_sexp(source) -> SExpr`
+- `parse_surface(source) -> SurfaceExpr`
+- `parse_surface_expr(expr) -> SurfaceExpr`
+- `desugar(expr) -> CoreExpr`
+- `lower(source) -> CoreExpr`
+- `eval_core(expr) -> Value`
+- `run(source) -> Value`
+- `run_to_string(source) -> String`
 
 ## Example
 
-```moonbit nocheck
-///|
-test "run a simple program" {
+```moonbit
+test "evaluate a small program" {
   let program =
     #|(let x 10)
     #|(let y (+ x 5))
@@ -64,13 +73,13 @@ false
 ((fn (x y z) (+ x y z)) 4 5 3)
 ```
 
-Functions are non-curried: all parameters are passed at once.
+Functions are non-curried: arguments are passed in a single call.
 
 ### Blocks
 
-When multiple top-level forms appear together, they are treated as a block.
-The last expression becomes the result. If a block ends with a declaration, the
-result is `()`.
+Multiple forms at the same level are parsed as a block. The last expression is
+the block result. If the final form is a declaration, the block evaluates to
+`()`.
 
 ```lisp
 (let x 1)
@@ -79,11 +88,11 @@ result is `()`.
 (+ x y)
 ```
 
-The same block-style body also works inside `fn` and `do`.
+Block bodies are also supported inside `fn` and `do`.
 
 ### Bindings
 
-Sequential binding:
+Sequential declarations:
 
 ```lisp
 (let x 10)
@@ -91,15 +100,15 @@ Sequential binding:
 (+ x y)
 ```
 
-Parallel binding:
+Parallel declarations:
 
 ```lisp
 (let& (x 1) (y 2))
 (+ x y)
 ```
 
-`let&` evaluates every right-hand side in the original environment, so sibling
-bindings do not see one another.
+`let&` evaluates all right-hand sides in the original environment, so sibling
+bindings cannot refer to one another.
 
 ## Built-in Functions
 
@@ -112,27 +121,56 @@ The runtime currently provides:
 
 ## CLI
 
-A small runnable entry point is included:
+The project includes a CLI package at `cmd/main`. It uses subcommands for each
+stage of the pipeline.
+
+Evaluate a program from an inline expression:
 
 ```bash
-moon run cmd/main -- "(+ 1 (* 2 3) 4)"
+moon run cmd/main -- run -e "(+ 1 (* 2 3) 4)"
 ```
 
-If evaluation succeeds, the CLI prints the final result. If it fails, it prints
-the reported error.
+Evaluate a program from a file:
+
+```bash
+moon run cmd/main -- run examples/program.sml
+```
+
+Inspect the parsed S-expression AST:
+
+```bash
+moon run cmd/main -- sexp -e "(+ 1 2)"
+```
+
+Inspect the surface AST:
+
+```bash
+moon run cmd/main -- surface -e "(let x 1) (+ x 2)"
+```
+
+Inspect the lowered core AST:
+
+```bash
+moon run cmd/main -- core -e "(let x 1) (+ x 2)"
+```
+
+Each stage accepts exactly one input source:
+
+- `-e <expr>` to read source from the command line
+- `<path>` to read source from a file
 
 ## Development
+
+Update generated package interfaces:
+
+```bash
+moon info
+```
 
 Format the project:
 
 ```bash
 moon fmt
-```
-
-Refresh the generated package interface:
-
-```bash
-moon info
 ```
 
 Run tests:
@@ -144,6 +182,5 @@ moon test
 ## Notes
 
 - Comments start with `;` and continue to the end of the line
-- String literals support common escapes such as `\n`, `\r`, `\t`, `\"`, and `\\`
-- Runtime errors, parse errors, and surface-syntax errors are reported through
-  `SmlError`
+- String literals support `\n`, `\r`, `\t`, `\"`, and `\\`
+- Errors are reported as `SmlError`, with parse, surface, and runtime variants
