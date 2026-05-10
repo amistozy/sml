@@ -84,6 +84,32 @@ test "let and function declaration sugar works" {
 }
 
 ///|
+test "letrec supports self recursion" {
+  let program =
+    #|(letrec (fact n)
+    #|  (if (= n 0)
+    #|    1
+    #|    (* n (fact (- n 1)))))
+    #|(fact 5)
+  assert_eq(@sml.run_to_string(program), "120")
+}
+
+///|
+test "letrec and supports mutual recursion" {
+  let program =
+    #|(letrec& ((even n)
+    #|           (if (= n 0)
+    #|             true
+    #|             (odd (- n 1))))
+    #|          ((odd n)
+    #|           (if (= n 0)
+    #|             false
+    #|             (even (- n 1)))))
+    #|(even 10)
+  assert_eq(@sml.run_to_string(program), "true")
+}
+
+///|
 test "block can interleave expressions and let declarations" {
   let program =
     #|(let x 1)

@@ -145,6 +145,55 @@ test "function let and binding parses as fn sugar" {
 }
 
 ///|
+test "letrec declaration parses as recursive function binding" {
+  let program =
+    #|(letrec (fact n)
+    #|  (if (= n 0) 1 (* n (fact (- n 1)))))
+    #|(fact 5)
+  let surface = parse_surface(program)
+  assert_true(
+    surface
+    is Block(
+      [
+        Decl(
+          SurfaceDecl::LetRec(
+            "fact",
+            ["n"],
+            If(
+              Call(Var("="), [Var("n"), Int(0)]),
+              Int(1),
+              Call(
+                Var("*"),
+                [
+                  Var("n"),
+                  Call(Var("fact"), [Call(Var("-"), [Var("n"), Int(1)])]),
+                ]
+              )
+            )
+          )
+        ),
+        Expr(Call(Var("fact"), [Int(5)])),
+      ]
+    ),
+  )
+}
+
+///|
+test "letrec declaration desugars to core letrec" {
+  let program =
+    #|(letrec (inc x) (+ x 1))
+    #|(inc 41)
+  let core = parse_surface(program) |> desugar
+  assert_true(
+    core
+    is LetRec(
+      [("inc", ["x"], Call(Var("+"), [Var("x"), Int(1)]))],
+      Call(Var("inc"), [Int(41)])
+    ),
+  )
+}
+
+///|
 test "parallel let binding can parse multi form rhs" {
   let program =
     #|(let& (x

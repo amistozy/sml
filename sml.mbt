@@ -35,6 +35,8 @@ pub enum SurfaceExpr {
 pub enum SurfaceDecl {
   Let(String, SurfaceExpr)
   LetAnd(Array[(String, SurfaceExpr)])
+  LetRec(String, Array[String], SurfaceExpr)
+  LetRecAnd(Array[(String, Array[String], SurfaceExpr)])
 } derive(Eq, Debug)
 
 ///|
@@ -52,6 +54,7 @@ pub enum CoreExpr {
   Var(String)
   If(CoreExpr, CoreExpr, CoreExpr)
   Let(Array[(String, CoreExpr)], CoreExpr)
+  LetRec(Array[(String, Array[String], CoreExpr)], CoreExpr)
   Fn(Array[String], CoreExpr)
   Call(CoreExpr, Array[CoreExpr])
 } derive(Eq, Debug)
@@ -78,7 +81,7 @@ pub impl Show for SmlError with output(self, logger) {
 pub struct Closure {
   params : Array[String]
   body : CoreExpr
-  env : Env
+  mut env : Env
 }
 
 ///|
@@ -333,6 +336,20 @@ fn parse_decl_name_and_value(
 }
 
 ///|
+fn parse_rec_decl_name_and_body(
+  target : SExpr,
+  body : ArrayView[SExpr],
+) -> (String, Array[String], SurfaceExpr) raise SmlError {
+  match target {
+    List([Atom(Symbol(name)), .. params]) => {
+      let params = parse_params(List(params.to_owned()))
+      (name, params, parse_body(body))
+    }
+    _ => raise SurfaceError("letrec declaration target must be a function head")
+  }
+}
+
+///|
 fn parse_binding(item : SExpr) -> (String, SurfaceExpr) raise SmlError {
   match item {
     List(pair) if pair is [target, .. body] =>
@@ -346,6 +363,27 @@ fn parse_bindings(expr : SExpr) -> Array[(String, SurfaceExpr)] raise SmlError {
   match expr {
     List(items) => items.map(parse_binding)
     _ => raise SurfaceError("let bindings must be a list")
+  }
+}
+
+///|
+fn parse_rec_binding(
+  item : SExpr,
+) -> (String, Array[String], SurfaceExpr) raise SmlError {
+  match item {
+    List(pair) if pair is [target, .. body] =>
+      parse_rec_decl_name_and_body(target, body)
+    _ => raise SurfaceError("binding must have shape ((name args...) body...)")
+  }
+}
+
+///|
+fn parse_rec_bindings(
+  expr : SExpr,
+) -> Array[(String, Array[String], SurfaceExpr)] raise SmlError {
+  match expr {
+    List(items) => items.map(parse_rec_binding)
+    _ => raise SurfaceError("letrec bindings must be a list")
   }
 }
 
@@ -371,9 +409,9 @@ fn parse_special_form(
       }
       Fn(parse_params(tail[0]), parse_body(tail[1:]))
     }
-    "let" =>
+    "let" | "let&" | "letrec" | "letrec&" =>
       raise SurfaceError(
-        "let declarations are only allowed in a declaration sequence",
+        "declarations are only allowed in a declaration sequence",
       )
     "do" => parse_body(tail)
     _ => Call(Var(head), tail.map(parse_surface_expr))
@@ -406,6 +444,14 @@ fn parse_decl(expr : SExpr) -> SurfaceDecl? raise SmlError {
     }
     List([Atom(Symbol("let&")), .. bindings]) if bindings.length() > 0 =>
       Some(SurfaceDecl::LetAnd(parse_bindings(List(bindings.to_owned()))))
+    List([Atom(Symbol("letrec")), target, .. tail]) => {
+      let (name, params, body) = parse_rec_decl_name_and_body(target, tail)
+      Some(SurfaceDecl::LetRec(name, params, body))
+    }
+    List([Atom(Symbol("letrec&")), .. bindings]) if bindings.length() > 0 =>
+      Some(
+        SurfaceDecl::LetRecAnd(parse_rec_bindings(List(bindings.to_owned()))),
+      )
     _ => None
   }
 }
@@ -466,6 +512,13 @@ fn desugar_decl_to_let(decl : SurfaceDecl, body : CoreExpr) -> CoreExpr {
     SurfaceDecl::LetAnd(bindings) =>
       CoreExpr::Let(
         bindings.map(binding => (binding.0, desugar_expr(binding.1))),
+        body,
+      )
+    SurfaceDecl::LetRec(name, params, value) =>
+      CoreExpr::LetRec([(name, params, desugar_expr(value))], body)
+    SurfaceDecl::LetRecAnd(bindings) =>
+      CoreExpr::LetRec(
+        bindings.map(binding => (binding.0, binding.1, desugar_expr(binding.2))),
         body,
       )
   }
@@ -637,6 +690,24 @@ fn concat_values(args : ArrayView[Value]) -> Value {
 }
 
 ///|
+fn eval_letrec_bindings(
+  bindings : ArrayView[(String, Array[String], CoreExpr)],
+  env : Env,
+) -> Env {
+  let evaluated = bindings.map(binding => {
+    (binding.0, Closure({ params: binding.1, body: binding.2, env }))
+  })
+  let rec_env = env_extend(env, evaluated)
+  for binding in evaluated {
+    match binding.1 {
+      Closure(closure) => closure.env = rec_env
+      _ => abort("unreachable")
+    }
+  }
+  rec_env
+}
+
+///|
 fn apply_builtin(
   name : String,
   args : ArrayView[Value],
@@ -689,11 +760,7 @@ fn apply(func : Value, args : ArrayView[Value]) -> Value raise SmlError {
           "function expects \{closure.params.length()} arguments, got \{args.length()}",
         )
       }
-      let bindings = [
-        for i = 0; i < closure.params.length(); i = i + 1 => {
-          (closure.params[i], args[i])
-        }
-      ]
+      let bindings = [ for i, param in closure.params => (param, args[i]) ]
       eval_core(closure.body, env=env_extend(closure.env, bindings))
     }
     _ => raise RuntimeError("attempted to call a non-function value")
@@ -720,6 +787,10 @@ pub fn eval_core(
     Let(bindings, body) => {
       let evaluated = eval_let_bindings(bindings, env)
       eval_core(body, env=env_extend(env, evaluated))
+    }
+    LetRec(bindings, body) => {
+      let rec_env = eval_letrec_bindings(bindings, env)
+      eval_core(body, env=rec_env)
     }
     Fn(params, body) => Closure({ params, body, env })
     Call(func, args) => {

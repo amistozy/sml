@@ -35,7 +35,7 @@ pub impl Show for SmlError
 pub struct Closure {
   params : Array[String]
   body : CoreExpr
-  env : @sorted_map.SortedMap[String, Value]
+  mut env : @sorted_map.SortedMap[String, Value]
 }
 
 pub enum CoreExpr {
@@ -46,6 +46,7 @@ pub enum CoreExpr {
   Var(String)
   If(CoreExpr, CoreExpr, CoreExpr)
   Let(Array[(String, CoreExpr)], CoreExpr)
+  LetRec(Array[(String, Array[String], CoreExpr)], CoreExpr)
   Fn(Array[String], CoreExpr)
   Call(CoreExpr, Array[CoreExpr])
 } derive(Eq, @debug.Debug)
@@ -65,6 +66,8 @@ pub enum SExpr {
 pub enum SurfaceDecl {
   Let(String, SurfaceExpr)
   LetAnd(Array[(String, SurfaceExpr)])
+  LetRec(String, Array[String], SurfaceExpr)
+  LetRecAnd(Array[(String, Array[String], SurfaceExpr)])
 } derive(Eq, @debug.Debug)
 
 pub enum SurfaceExpr {
