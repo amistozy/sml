@@ -53,7 +53,7 @@ test "single let declaration can parse multi form rhs as block" {
 test "mixed block parses into stmt list" {
   let program =
     #|(let x 42)
-    #|(println x)
+    #|(say x)
     #|(let y (+ x 1))
     #|(+ x y)
   let surface = parse_surface(program)
@@ -62,7 +62,7 @@ test "mixed block parses into stmt list" {
     is Block(
       [
         Decl(SurfaceDecl::Let("x", Int(42))),
-        Expr(Call(Var("println"), [Var("x")])),
+        Expr(Call(Var("say"), [Var("x")])),
         Decl(SurfaceDecl::Let("y", Call(Var("+"), [Var("x"), Int(1)]))),
         Expr(Call(Var("+"), [Var("x"), Var("y")])),
       ]
@@ -120,7 +120,7 @@ test "function body with statements parses as block expression" {
   let program =
     #|(fn ()
     #|  (let x 1)
-    #|  (println x)
+    #|  (say x)
     #|  (let y (+ x 1))
     #|  (+ x y))
   let surface = parse_surface_expr(parse_sexp(program))
@@ -131,11 +131,25 @@ test "function body with statements parses as block expression" {
       Block(
         [
           Decl(SurfaceDecl::Let("x", Int(1))),
-          Expr(Call(Var("println"), [Var("x")])),
+          Expr(Call(Var("say"), [Var("x")])),
           Decl(SurfaceDecl::Let("y", Call(Var("+"), [Var("x"), Int(1)]))),
           Expr(Call(Var("+"), [Var("x"), Var("y")])),
         ]
       )
+    ),
+  )
+}
+
+///|
+test "say call keeps all arguments in order" {
+  let program =
+    #|(say name "is" age "years old.")
+  let surface = parse_surface(program)
+  assert_true(
+    surface
+    is Call(
+      Var("say"),
+      [Var("name"), String("is"), Var("age"), String("years old.")]
     ),
   )
 }
@@ -156,7 +170,7 @@ test "parallel let declaration desugars to multi binding core let" {
 test "middle expression desugars to let underscore" {
   let program =
     #|(let x 1)
-    #|(println x)
+    #|(say x)
     #|(+ x 1)
   let core = parse_surface(program) |> desugar
   assert_true(
@@ -164,7 +178,7 @@ test "middle expression desugars to let underscore" {
     is Let(
       [("x", Int(1))],
       Let(
-        [("_", Call(Var("println"), [Var("x")]))],
+        [("_", Call(Var("say"), [Var("x")]))],
         Call(Var("+"), [Var("x"), Int(1)])
       )
     ),

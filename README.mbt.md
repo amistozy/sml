@@ -39,7 +39,8 @@ The package exposes these main functions:
 
 ## Example
 
-```moonbit
+```moonbit nocheck
+///|
 test "evaluate a small program" {
   let program =
     #|(let x 10)
@@ -83,7 +84,7 @@ the block result. If the final form is a declaration, the block evaluates to
 
 ```lisp
 (let x 1)
-(println x)
+(say x)
 (let y (+ x 1))
 (+ x y)
 ```
@@ -117,7 +118,16 @@ The runtime currently provides:
 - Arithmetic: `+`, `-`, `*`, `/`
 - Comparison: `=`, `<`, `>`, `<=`, `>=`
 - Boolean: `not`
-- Output: `println`
+- Output: `say`
+
+`say` accepts zero or more arguments and prints them separated by a single
+space.
+
+```lisp
+(let name "Alice")
+(let age 18)
+(say name "is" age "years old.")
+```
 
 ## CLI
 

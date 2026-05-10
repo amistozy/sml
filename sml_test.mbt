@@ -76,7 +76,7 @@ test "block can appear in function body" {
   let program =
     #|((fn ()
     #|   (let x 1)
-    #|   (println x)
+    #|   (say x)
     #|   (let y (+ x 1))
     #|   (+ x y)))
   assert_eq(@sml.run_to_string(program), "3")
@@ -87,10 +87,20 @@ test "block can appear in do" {
   let program =
     #|(do
     #|  (let x 1)
-    #|  (println x)
+    #|  (say x)
     #|  (let y (+ x 1))
     #|  (+ x y))
   assert_eq(@sml.run_to_string(program), "3")
+}
+
+///|
+test "say accepts multiple arguments" {
+  let program =
+    #|(let name "Alice")
+    #|(let age 18)
+    #|(say name "is" age "years old.")
+    #|age
+  assert_eq(@sml.run_to_string(program), "18")
 }
 
 ///|

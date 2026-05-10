@@ -556,7 +556,7 @@ fn env_lookup(env : Env, name : String) -> Value raise SmlError {
 ///|
 fn base_env() -> Env {
   let mut env = env_empty()
-  for name in ["+", "-", "*", "/", "=", "<", ">", "<=", ">=", "not", "println"] {
+  for name in ["+", "-", "*", "/", "=", "<", ">", "<=", ">=", "not", "say"] {
     env = env.add(name, Builtin(name))
   }
   env
@@ -601,6 +601,23 @@ fn value_eq(left : Value, right : Value) -> Bool {
     (Builtin(a), Builtin(b)) => a == b
     _ => false
   }
+}
+
+///|
+fn value_to_say_string(value : Value) -> String {
+  match value {
+    String(text) => text
+    _ => value.to_string()
+  }
+}
+
+///|
+fn say_values(args : ReadOnlyArray[Value]) -> Unit {
+  let parts = []
+  for arg in args {
+    parts.push(value_to_say_string(arg))
+  }
+  println(parts.join(" "))
 }
 
 ///|
@@ -672,9 +689,8 @@ fn apply_builtin(
       expect_exact_arity("not", args, 1)
       Bool(!expect_bool(args[0]))
     }
-    "println" => {
-      expect_exact_arity("println", args, 1)
-      println(args[0].to_string())
+    "say" => {
+      say_values(args)
       Unit
     }
     _ => raise RuntimeError("unknown builtin: \{name}")
