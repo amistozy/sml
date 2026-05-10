@@ -1,0 +1,7 @@
+// import {
+//   "amistozy/sml" @lib,
+// }
+
+options(
+  "is-main": true,
+)
