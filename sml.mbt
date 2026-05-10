@@ -26,7 +26,8 @@ pub enum SurfaceExpr {
   String(String)
   Var(String)
   If(SurfaceExpr, SurfaceExpr, SurfaceExpr)
-  Let(ReadOnlyArray[(String, SurfaceExpr)], SurfaceExpr)
+  Let(String, SurfaceExpr, SurfaceExpr)
+  LetAnd(ReadOnlyArray[(String, SurfaceExpr)], SurfaceExpr)
   Fn(ReadOnlyArray[String], SurfaceExpr)
   Do(ReadOnlyArray[SurfaceExpr])
   Call(SurfaceExpr, ReadOnlyArray[SurfaceExpr])
@@ -39,7 +40,7 @@ pub enum CoreExpr {
   String(String)
   Var(String)
   If(CoreExpr, CoreExpr, CoreExpr)
-  Let(String, CoreExpr, CoreExpr)
+  Let(ReadOnlyArray[(String, CoreExpr)], CoreExpr)
   Fn(ReadOnlyArray[String], CoreExpr)
   Do(ReadOnlyArray[CoreExpr])
   Call(CoreExpr, ReadOnlyArray[CoreExpr])
@@ -333,6 +334,23 @@ fn parse_bindings(
 }
 
 ///|
+fn parse_let_form(tail : ArrayView[SExpr]) -> SurfaceExpr raise SmlError {
+  guard tail.length() >= 2 else {
+    raise SurfaceError("let expects bindings and a body")
+  }
+  match tail[0] {
+    Atom(Symbol(name)) => {
+      guard tail.length() >= 3 else {
+        raise SurfaceError("single let expects a name, a value and a body")
+      }
+      Let(name, parse_surface_expr(tail[1]), parse_body(tail[2:]))
+    }
+    List(_) => LetAnd(parse_bindings(tail[0]), parse_body(tail[1:]))
+    _ => raise SurfaceError("let expects either a symbol or a binding list")
+  }
+}
+
+///|
 fn parse_special_form(
   head : String,
   tail : ArrayView[SExpr],
@@ -354,12 +372,7 @@ fn parse_special_form(
       }
       Fn(parse_params(tail[0]), parse_body(tail[1:]))
     }
-    "let" => {
-      guard tail.length() >= 2 else {
-        raise SurfaceError("let expects bindings and a body")
-      }
-      Let(parse_bindings(tail[0]), parse_body(tail[1:]))
-    }
+    "let" => parse_let_form(tail)
     "do" => {
       guard tail.length() > 0 else {
         raise SurfaceError("do expects at least one expression")
@@ -408,25 +421,19 @@ pub fn desugar(expr : SurfaceExpr) -> CoreExpr {
     Var(name) => CoreExpr::Var(name)
     If(cond, then_branch, else_branch) =>
       CoreExpr::If(desugar(cond), desugar(then_branch), desugar(else_branch))
+    Let(name, value, body) => {
+      let binding = [(name, desugar(value))]
+      CoreExpr::Let(ReadOnlyArray::from_array(binding), desugar(body))
+    }
+    LetAnd(bindings, body) =>
+      CoreExpr::Let(
+        bindings.map(binding => (binding.0, desugar(binding.1))),
+        desugar(body),
+      )
     Fn(params, body) => CoreExpr::Fn(params, desugar(body))
     Do(exprs) => CoreExpr::Do(exprs.map(desugar))
     Call(func, args) => CoreExpr::Call(desugar(func), args.map(desugar))
-    Let(bindings, body) => desugar_let(bindings, desugar(body))
   }
-}
-
-///|
-fn desugar_let(
-  bindings : ReadOnlyArray[(String, SurfaceExpr)],
-  body : CoreExpr,
-) -> CoreExpr {
-  guard bindings.length() > 0 else { return body }
-  let mut result = body
-  for i = bindings.length() - 1; i >= 0; i = i - 1 {
-    let binding = bindings[i]
-    result = CoreExpr::Let(binding.0, desugar(binding.1), result)
-  }
-  result
 }
 
 ///|
@@ -434,22 +441,27 @@ fn env_empty() -> Env {
   @sorted_map.new()
 }
 
-///|
-fn env_bind(parent : Env, name : String, value : Value) -> Env {
-  parent.add(name, value)
+fn env_extend(
+  parent : Env,
+  bindings_to_add : ReadOnlyArray[(String, Value)],
+) -> Env {
+  let mut bindings = parent
+  for binding in bindings_to_add {
+    bindings = bindings.add(binding.0, binding.1)
+  }
+  bindings
 }
 
 ///|
-fn env_extend(
-  parent : Env,
-  params : ReadOnlyArray[String],
-  args : ReadOnlyArray[Value],
-) -> Env {
-  let mut bindings = parent
-  for i = 0; i < params.length(); i = i + 1 {
-    bindings = bindings.add(params[i], args[i])
+fn eval_let_bindings(
+  bindings : ReadOnlyArray[(String, CoreExpr)],
+  env : Env,
+) -> ReadOnlyArray[(String, Value)] raise SmlError {
+  let evaluated = []
+  for binding in bindings {
+    evaluated.push((binding.0, eval_core(binding.1, env~)))
   }
-  bindings
+  ReadOnlyArray::from_array(evaluated)
 }
 
 ///|
@@ -593,7 +605,15 @@ fn apply(func : Value, args : ReadOnlyArray[Value]) -> Value raise SmlError {
           "function expects \{closure.params.length()} arguments, got \{args.length()}",
         )
       }
-      eval_core(closure.body, env=env_extend(closure.env, closure.params, args))
+      let bindings = [
+        for i = 0; i < closure.params.length(); i = i + 1 => {
+          (closure.params[i], args[i])
+        }
+      ]
+      eval_core(
+        closure.body,
+        env=env_extend(closure.env, ReadOnlyArray::from_array(bindings)),
+      )
     }
     _ => raise RuntimeError("attempted to call a non-function value")
   }
@@ -624,9 +644,9 @@ pub fn eval_core(
       } else {
         eval_core(else_branch, env~)
       }
-    Let(name, value, body) => {
-      let evaluated = eval_core(value, env~)
-      eval_core(body, env=env_bind(env, name, evaluated))
+    Let(bindings, body) => {
+      let evaluated = eval_let_bindings(bindings, env)
+      eval_core(body, env=env_extend(env, evaluated))
     }
     Fn(params, body) => Closure({ params, body, env })
     Do(exprs) => eval_do(exprs, env)

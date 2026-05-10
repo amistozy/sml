@@ -4,8 +4,14 @@ test "evaluate arithmetic and nested calls" {
 }
 
 ///|
-test "let is desugared into lexical bindings" {
-  assert_eq(@sml.run_to_string("(let ((x 10) (y (+ x 5))) (+ x y))"), "25")
+test "parallel let evaluates rhs in original environment" {
+  let result = try? @sml.run_to_string("(let ((x 10) (y (+ x 5))) (+ x y))")
+  assert_true(result is Err(@sml.RuntimeError(_)))
+}
+
+///|
+test "single let introduces one binding into the body" {
+  assert_eq(@sml.run_to_string("(let x 10 (let y (+ x 5) (+ x y)))"), "25")
 }
 
 ///|
