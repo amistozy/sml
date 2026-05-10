@@ -194,3 +194,39 @@ test "strings are dynamic values too" {
     #|(if (= "hi" "hi") "ok" "bad")
   assert_eq(@sml.run_to_string(program), "\"ok\"")
 }
+
+///|
+test "ref supports create read and write" {
+  let program =
+    #|(let r (ref 1))
+    #|(:= r 2)
+    #|(! r)
+  assert_eq(@sml.run_to_string(program), "2")
+}
+
+///|
+test "ref aliases are shared" {
+  let program =
+    #|(let r (ref 1))
+    #|(let s r)
+    #|(:= s 7)
+    #|(! r)
+  assert_eq(@sml.run_to_string(program), "7")
+}
+
+///|
+test "ref updates are visible through closures" {
+  let program =
+    #|(let r (ref 0))
+    #|(let (bump)
+    #|  (:= r (+ (! r) 1)))
+    #|(bump)
+    #|(! r)
+  assert_eq(@sml.run_to_string(program), "1")
+}
+
+///|
+test "deref rejects non refs" {
+  let result = try? @sml.run_to_string("(! 1)")
+  assert_true(result is Err(@sml.RuntimeError(_)))
+}

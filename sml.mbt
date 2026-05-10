@@ -85,11 +85,17 @@ pub struct Closure {
 }
 
 ///|
+pub struct RefValue {
+  mut value : Value
+}
+
+///|
 pub enum Value {
   Int(Int)
   Bool(Bool)
   String(String)
   Unit
+  Ref(RefValue)
   Closure(Closure)
   Builtin(String)
 }
@@ -108,6 +114,11 @@ pub impl Show for Value with output(self, logger) {
       logger.write_string("\"")
     }
     Unit => logger.write_string("()")
+    Ref(cell) => {
+      logger.write_string("ref(")
+      logger.write_object(cell.value)
+      logger.write_string(")")
+    }
     Closure(_) => logger.write_string("<fn>")
     Builtin(name) => {
       logger.write_string("<builtin:")
@@ -587,10 +598,10 @@ fn env_lookup(env : Env, name : String) -> Value raise SmlError {
 
 ///|
 fn base_env() -> Env {
-  ["+", "++", "-", "*", "/", "=", "<", ">", "<=", ">=", "not", "say"].fold(
-    init=env_empty(),
-    (env, name) => env.add(name, Builtin(name)),
-  )
+  [
+    "+", "++", "-", "*", "/", "=", "<", ">", "<=", ">=", "not", "say", "ref", "!",
+    ":=",
+  ].fold(init=env_empty(), (env, name) => env.add(name, Builtin(name)))
 }
 
 ///|
@@ -606,6 +617,14 @@ fn expect_bool(value : Value) -> Bool raise SmlError {
   match value {
     Bool(flag) => flag
     _ => raise RuntimeError("expected boolean")
+  }
+}
+
+///|
+fn expect_ref(value : Value) -> RefValue raise SmlError {
+  match value {
+    Ref(cell) => cell
+    _ => raise RuntimeError("expected ref")
   }
 }
 
@@ -690,6 +709,26 @@ fn concat_values(args : ArrayView[Value]) -> Value {
 }
 
 ///|
+fn make_ref(args : ArrayView[Value]) -> Value raise SmlError {
+  expect_exact_arity("ref", args, 1)
+  Ref({ value: args[0] })
+}
+
+///|
+fn deref_value(args : ArrayView[Value]) -> Value raise SmlError {
+  expect_exact_arity("!", args, 1)
+  expect_ref(args[0]).value
+}
+
+///|
+fn assign_ref(args : ArrayView[Value]) -> Value raise SmlError {
+  expect_exact_arity(":=", args, 2)
+  let cell = expect_ref(args[0])
+  cell.value = args[1]
+  Unit
+}
+
+///|
 fn eval_letrec_bindings(
   bindings : ArrayView[(String, Array[String], CoreExpr)],
   env : Env,
@@ -715,6 +754,9 @@ fn apply_builtin(
   match name {
     "+" => add_int_values(args)
     "++" => concat_values(args)
+    "ref" => make_ref(args)
+    "!" => deref_value(args)
+    ":=" => assign_ref(args)
     "-" => sub_int_values(args)
     "*" => mul_int_values(args)
     "/" => div_int_values(args)

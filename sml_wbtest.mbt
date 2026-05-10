@@ -293,6 +293,24 @@ test "say call keeps all arguments in order" {
 }
 
 ///|
+test "ref primitives parse as ordinary calls" {
+  let program =
+    #|(do
+    #|  (:= r (ref 1))
+    #|  (! r))
+  let surface = parse_surface(program)
+  assert_true(
+    surface
+    is Block(
+      [
+        Expr(Call(Var(":="), [Var("r"), Call(Var("ref"), [Int(1)])])),
+        Expr(Call(Var("!"), [Var("r")])),
+      ]
+    ),
+  )
+}
+
+///|
 test "parallel let declaration desugars to multi binding core let" {
   let program =
     #|(let& (x 1) (y 2))
