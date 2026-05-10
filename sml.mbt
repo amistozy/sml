@@ -180,7 +180,7 @@ fn parse_string_literal(
 }
 
 ///|
-fn parse_atom_token(token : String) -> SAtom raise SmlError {
+fn parse_atom_token(token : StringView) -> SAtom raise SmlError {
   match token {
     "true" => Bool(true)
     "false" => Bool(false)
@@ -192,18 +192,17 @@ fn parse_atom_token(token : String) -> SAtom raise SmlError {
           },
         )
       } else {
-        Symbol(token)
+        Symbol(token.to_owned())
       }
   }
 }
 
 ///|
-fn is_int_token(token : String) -> Bool {
-  let view = token[:]
-  match view {
+fn is_int_token(token : StringView) -> Bool {
+  match token {
     [] => false
     ['-', .. tail] => has_only_digits(tail)
-    _ => has_only_digits(view)
+    _ => has_only_digits(token)
   }
 }
 
@@ -278,8 +277,8 @@ fn parse_sexp_inner(input : StringView) -> (StringView, SExpr) raise SmlError {
 }
 
 ///|
-pub fn parse_sexp(source : String) -> SExpr raise SmlError {
-  let (rest, expr) = parse_sexp_inner(source[:])
+pub fn parse_sexp(source : StringView) -> SExpr raise SmlError {
+  let (rest, expr) = parse_sexp_inner(source)
   guard skip_ws(rest) is [] else {
     raise ParseError("unexpected trailing input")
   }
@@ -287,9 +286,9 @@ pub fn parse_sexp(source : String) -> SExpr raise SmlError {
 }
 
 ///|
-fn parse_sexps(source : String) -> Array[SExpr] raise SmlError {
+fn parse_sexps(source : StringView) -> Array[SExpr] raise SmlError {
   let exprs = []
-  for rest = skip_ws(source[:]) {
+  for rest = skip_ws(source) {
     match rest {
       [] => break exprs
       _ => {
@@ -420,32 +419,21 @@ fn parse_stmt(expr : SExpr) -> SurfaceStmt raise SmlError {
 }
 
 ///|
-fn parse_block(forms : Array[SExpr]) -> SurfaceExpr raise SmlError {
-  guard forms.length() > 0 else {
-    raise SurfaceError("expected at least one form")
-  }
-  if forms.length() == 1 {
-    match parse_decl(forms[0]) {
-      Some(decl) => Block([Decl(decl)])
-      None => parse_surface_expr(forms[0])
-    }
-  } else {
-    Block(forms.map(parse_stmt))
-  }
-}
-
-///|
 fn parse_body(forms : ArrayView[SExpr]) -> SurfaceExpr raise SmlError {
-  if forms.length() == 0 {
-    Block([])
-  } else {
-    parse_block(forms.to_owned())
+  match forms {
+    [] => Block([])
+    [form] =>
+      match parse_decl(form) {
+        Some(decl) => Block([Decl(decl)])
+        None => parse_surface_expr(form)
+      }
+    _ => Block(forms.map(parse_stmt))
   }
 }
 
 ///|
-pub fn parse_surface(source : String) -> SurfaceExpr raise SmlError {
-  parse_block(parse_sexps(source))
+pub fn parse_surface(source : StringView) -> SurfaceExpr raise SmlError {
+  parse_body(parse_sexps(source))
 }
 
 ///|
@@ -484,7 +472,7 @@ fn desugar_decl_to_let(decl : SurfaceDecl, body : CoreExpr) -> CoreExpr {
 }
 
 ///|
-fn desugar_block(stmts : Array[SurfaceStmt]) -> CoreExpr {
+fn desugar_block(stmts : ArrayView[SurfaceStmt]) -> CoreExpr {
   guard stmts.length() > 0 else { return CoreExpr::Unit }
   let mut result = match stmts[stmts.length() - 1] {
     SurfaceStmt::Decl(decl) => desugar_decl_to_let(decl, CoreExpr::Unit)
@@ -509,7 +497,7 @@ pub fn desugar(expr : SurfaceExpr) -> CoreExpr {
 }
 
 ///|
-pub fn lower(source : String) -> CoreExpr raise SmlError {
+pub fn lower(source : StringView) -> CoreExpr raise SmlError {
   source |> parse_surface |> desugar
 }
 
@@ -519,7 +507,10 @@ fn env_empty() -> Env {
 }
 
 ///|
-fn env_extend(parent : Env, bindings_to_add : Array[(String, Value)]) -> Env {
+fn env_extend(
+  parent : Env,
+  bindings_to_add : ArrayView[(String, Value)],
+) -> Env {
   bindings_to_add.fold(init=parent, (bindings, binding) => {
     bindings.add(binding.0, binding.1)
   })
@@ -527,7 +518,7 @@ fn env_extend(parent : Env, bindings_to_add : Array[(String, Value)]) -> Env {
 
 ///|
 fn eval_let_bindings(
-  bindings : Array[(String, CoreExpr)],
+  bindings : ArrayView[(String, CoreExpr)],
   env : Env,
 ) -> Array[(String, Value)] raise SmlError {
   bindings.map(binding => (binding.0, eval_core(binding.1, env~)))
@@ -568,7 +559,7 @@ fn expect_bool(value : Value) -> Bool raise SmlError {
 ///|
 fn expect_exact_arity(
   name : String,
-  args : Array[Value],
+  args : ArrayView[Value],
   expected : Int,
 ) -> Unit raise SmlError {
   guard args.length() == expected else {
@@ -599,17 +590,17 @@ fn value_to_say_string(value : Value) -> String {
 }
 
 ///|
-fn say_values(args : Array[Value]) -> Unit {
+fn say_values(args : ArrayView[Value]) -> Unit {
   println(args.map(value_to_say_string).join(" "))
 }
 
 ///|
-fn add_int_values(args : Array[Value]) -> Value raise SmlError {
+fn add_int_values(args : ArrayView[Value]) -> Value raise SmlError {
   Int(args.fold(init=0, (total, arg) => total + expect_int(arg)))
 }
 
 ///|
-fn sub_int_values(args : Array[Value]) -> Value raise SmlError {
+fn sub_int_values(args : ArrayView[Value]) -> Value raise SmlError {
   match args {
     [] => raise RuntimeError("builtin - expects at least 1 argument")
     [first] => Int(-expect_int(first))
@@ -623,12 +614,12 @@ fn sub_int_values(args : Array[Value]) -> Value raise SmlError {
 }
 
 ///|
-fn mul_int_values(args : Array[Value]) -> Value raise SmlError {
+fn mul_int_values(args : ArrayView[Value]) -> Value raise SmlError {
   Int(args.fold(init=1, (total, arg) => total * expect_int(arg)))
 }
 
 ///|
-fn div_int_values(args : Array[Value]) -> Value raise SmlError {
+fn div_int_values(args : ArrayView[Value]) -> Value raise SmlError {
   match args {
     [] | [_] => raise RuntimeError("builtin / expects at least 2 arguments")
     [first, .. rest] =>
@@ -641,12 +632,15 @@ fn div_int_values(args : Array[Value]) -> Value raise SmlError {
 }
 
 ///|
-fn concat_values(args : Array[Value]) -> Value {
+fn concat_values(args : ArrayView[Value]) -> Value {
   String(args.map(value_to_say_string).join(""))
 }
 
 ///|
-fn apply_builtin(name : String, args : Array[Value]) -> Value raise SmlError {
+fn apply_builtin(
+  name : String,
+  args : ArrayView[Value],
+) -> Value raise SmlError {
   match name {
     "+" => add_int_values(args)
     "++" => concat_values(args)
@@ -686,7 +680,7 @@ fn apply_builtin(name : String, args : Array[Value]) -> Value raise SmlError {
 }
 
 ///|
-fn apply(func : Value, args : Array[Value]) -> Value raise SmlError {
+fn apply(func : Value, args : ArrayView[Value]) -> Value raise SmlError {
   match func {
     Builtin(name) => apply_builtin(name, args)
     Closure(closure) => {
@@ -737,11 +731,11 @@ pub fn eval_core(
 }
 
 ///|
-pub fn run(source : String) -> Value raise SmlError {
+pub fn run(source : StringView) -> Value raise SmlError {
   source |> lower |> eval_core
 }
 
 ///|
-pub fn run_to_string(source : String) -> String raise SmlError {
+pub fn run_to_string(source : StringView) -> String raise SmlError {
   run(source).to_string()
 }

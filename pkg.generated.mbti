@@ -11,17 +11,17 @@ pub fn desugar(SurfaceExpr) -> CoreExpr
 
 pub fn eval_core(CoreExpr, env? : @sorted_map.SortedMap[String, Value]) -> Value raise SmlError
 
-pub fn lower(String) -> CoreExpr raise SmlError
+pub fn lower(StringView) -> CoreExpr raise SmlError
 
-pub fn parse_sexp(String) -> SExpr raise SmlError
+pub fn parse_sexp(StringView) -> SExpr raise SmlError
 
-pub fn parse_surface(String) -> SurfaceExpr raise SmlError
+pub fn parse_surface(StringView) -> SurfaceExpr raise SmlError
 
 pub fn parse_surface_expr(SExpr) -> SurfaceExpr raise SmlError
 
-pub fn run(String) -> Value raise SmlError
+pub fn run(StringView) -> Value raise SmlError
 
-pub fn run_to_string(String) -> String raise SmlError
+pub fn run_to_string(StringView) -> String raise SmlError
 
 // Errors
 pub(all) suberror SmlError {
