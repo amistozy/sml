@@ -56,6 +56,34 @@ test "let declaration rhs can contain multiple forms" {
 }
 
 ///|
+test "let function declaration sugar works" {
+  let program =
+    #|(let (greet name)
+    #|  (++ "hello, " name))
+    #|(greet "Alice")
+  assert_eq(@sml.run_to_string(program), "\"hello, Alice\"")
+}
+
+///|
+test "empty bodies evaluate to unit" {
+  let program =
+    #|(let x)
+    #|(let (f))
+    #|(do)
+    #|((fn ()))
+  assert_eq(@sml.run_to_string(program), "()")
+}
+
+///|
+test "let and function declaration sugar works" {
+  let program =
+    #|(let& ((double x) (+ x x))
+    #|      ((describe x) (++ "value=" x)))
+    #|(++ (describe 21) ":" (double 21))
+  assert_eq(@sml.run_to_string(program), "\"value=21:42\"")
+}
+
+///|
 test "block can interleave expressions and let declarations" {
   let program =
     #|(let x 1)

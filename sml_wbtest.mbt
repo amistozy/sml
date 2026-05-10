@@ -50,6 +50,43 @@ test "single let declaration can parse multi form rhs as block" {
 }
 
 ///|
+test "function let declaration parses as fn sugar" {
+  let program =
+    #|(let (greet name)
+    #|  (++ "hello, " name))
+    #|(greet "Alice")
+  let surface = parse_surface(program)
+  assert_true(
+    surface
+    is Block(
+      [
+        Decl(
+          SurfaceDecl::Let(
+            "greet",
+            Fn(["name"], Call(Var("++"), [String("hello, "), Var("name")]))
+          )
+        ),
+        Expr(Call(Var("greet"), [String("Alice")])),
+      ]
+    ),
+  )
+}
+
+///|
+test "empty bodies parse as empty blocks" {
+  let let_surface = parse_surface("(let x)")
+  let do_surface = parse_surface_expr(parse_sexp("(do)"))
+  let fn_surface = parse_surface_expr(parse_sexp("(fn ())"))
+  let let_and_surface = parse_surface("(let& (x))")
+  assert_true(let_surface is Block([Decl(SurfaceDecl::Let("x", Block([])))]))
+  assert_true(do_surface is Block([]))
+  assert_true(fn_surface is Fn([], Block([])))
+  assert_true(
+    let_and_surface is Block([Decl(SurfaceDecl::LetAnd([("x", Block([]))]))]),
+  )
+}
+
+///|
 test "mixed block parses into stmt list" {
   let program =
     #|(let x 42)
@@ -65,6 +102,43 @@ test "mixed block parses into stmt list" {
         Expr(Call(Var("say"), [Var("x")])),
         Decl(SurfaceDecl::Let("y", Call(Var("+"), [Var("x"), Int(1)]))),
         Expr(Call(Var("+"), [Var("x"), Var("y")])),
+      ]
+    ),
+  )
+}
+
+///|
+test "function let and binding parses as fn sugar" {
+  let program =
+    #|(let& ((double x) (+ x x))
+    #|      ((describe x) (++ "value=" x)))
+    #|(++ (describe 21) ":" (double 21))
+  let surface = parse_surface(program)
+  assert_true(
+    surface
+    is Block(
+      [
+        Decl(
+          SurfaceDecl::LetAnd(
+            [
+              ("double", Fn(["x"], Call(Var("+"), [Var("x"), Var("x")]))),
+              (
+                "describe",
+                Fn(["x"], Call(Var("++"), [String("value="), Var("x")])),
+              ),
+            ]
+          )
+        ),
+        Expr(
+          Call(
+            Var("++"),
+            [
+              Call(Var("describe"), [Int(21)]),
+              String(":"),
+              Call(Var("double"), [Int(21)]),
+            ]
+          )
+        ),
       ]
     ),
   )
@@ -111,6 +185,21 @@ test "parallel let binding can parse multi form rhs" {
         ),
         Expr(Call(Var("+"), [Var("x"), Var("z")])),
       ]
+    ),
+  )
+}
+
+///|
+test "function let declaration desugars through fn body" {
+  let program =
+    #|(let (inc x) (+ x 1))
+    #|(inc 41)
+  let core = parse_surface(program) |> desugar
+  assert_true(
+    core
+    is Let(
+      [("inc", Fn(["x"], Call(Var("+"), [Var("x"), Int(1)])))],
+      Call(Var("inc"), [Int(41)])
     ),
   )
 }

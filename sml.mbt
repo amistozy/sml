@@ -16,7 +16,7 @@ pub enum SAtom {
 ///|
 pub enum SExpr {
   Atom(SAtom)
-  List(ReadOnlyArray[SExpr])
+  List(Array[SExpr])
 } derive(Eq, Debug)
 
 ///|
@@ -26,15 +26,15 @@ pub enum SurfaceExpr {
   String(String)
   Var(String)
   If(SurfaceExpr, SurfaceExpr, SurfaceExpr)
-  Block(ReadOnlyArray[SurfaceStmt])
-  Fn(ReadOnlyArray[String], SurfaceExpr)
-  Call(SurfaceExpr, ReadOnlyArray[SurfaceExpr])
+  Block(Array[SurfaceStmt])
+  Fn(Array[String], SurfaceExpr)
+  Call(SurfaceExpr, Array[SurfaceExpr])
 } derive(Eq, Debug)
 
 ///|
 pub enum SurfaceDecl {
   Let(String, SurfaceExpr)
-  LetAnd(ReadOnlyArray[(String, SurfaceExpr)])
+  LetAnd(Array[(String, SurfaceExpr)])
 } derive(Eq, Debug)
 
 ///|
@@ -51,9 +51,9 @@ pub enum CoreExpr {
   Unit
   Var(String)
   If(CoreExpr, CoreExpr, CoreExpr)
-  Let(ReadOnlyArray[(String, CoreExpr)], CoreExpr)
-  Fn(ReadOnlyArray[String], CoreExpr)
-  Call(CoreExpr, ReadOnlyArray[CoreExpr])
+  Let(Array[(String, CoreExpr)], CoreExpr)
+  Fn(Array[String], CoreExpr)
+  Call(CoreExpr, Array[CoreExpr])
 } derive(Eq, Debug)
 
 ///|
@@ -76,7 +76,7 @@ pub impl Show for SmlError with output(self, logger) {
 
 ///|
 pub struct Closure {
-  params : ReadOnlyArray[String]
+  params : Array[String]
   body : CoreExpr
   env : Env
 }
@@ -251,7 +251,7 @@ fn parse_list(input : StringView) -> (StringView, SExpr) raise SmlError {
   let items = []
   for rest = skip_ws(input) {
     match rest {
-      [')', .. tail] => break (tail, List(ReadOnlyArray::from_array(items)))
+      [')', .. tail] => break (tail, List(items))
       [] => raise ParseError("unterminated list")
       _ => {
         let (tail, expr) = parse_sexp_inner(rest)
@@ -287,11 +287,11 @@ pub fn parse_sexp(source : String) -> SExpr raise SmlError {
 }
 
 ///|
-fn parse_sexps(source : String) -> ReadOnlyArray[SExpr] raise SmlError {
+fn parse_sexps(source : String) -> Array[SExpr] raise SmlError {
   let exprs = []
   for rest = skip_ws(source[:]) {
     match rest {
-      [] => break ReadOnlyArray::from_array(exprs)
+      [] => break exprs
       _ => {
         let (tail, expr) = parse_sexp_inner(rest)
         exprs.push(expr)
@@ -310,7 +310,7 @@ fn expect_symbol_atom(expr : SExpr) -> String raise SmlError {
 }
 
 ///|
-fn parse_params(expr : SExpr) -> ReadOnlyArray[String] raise SmlError {
+fn parse_params(expr : SExpr) -> Array[String] raise SmlError {
   match expr {
     List(items) => items.map(expect_symbol_atom)
     _ => raise SurfaceError("function parameter list must be a list")
@@ -318,21 +318,32 @@ fn parse_params(expr : SExpr) -> ReadOnlyArray[String] raise SmlError {
 }
 
 ///|
+fn parse_decl_name_and_value(
+  target : SExpr,
+  body : ArrayView[SExpr],
+) -> (String, SurfaceExpr) raise SmlError {
+  match target {
+    Atom(Symbol(name)) => (name, parse_body(body))
+    List([Atom(Symbol(name)), .. params]) => {
+      let params = parse_params(List(params.to_owned()))
+      (name, Fn(params, parse_body(body)))
+    }
+    _ =>
+      raise SurfaceError("declaration target must be a symbol or function head")
+  }
+}
+
+///|
 fn parse_binding(item : SExpr) -> (String, SurfaceExpr) raise SmlError {
   match item {
-    List(pair) if pair.length() >= 2 => {
-      let name = expect_symbol_atom(pair[0])
-      let value = parse_body(pair[1:])
-      (name, value)
-    }
+    List(pair) if pair is [target, .. body] =>
+      parse_decl_name_and_value(target, body)
     _ => raise SurfaceError("binding must have shape (name expr)")
   }
 }
 
 ///|
-fn parse_bindings(
-  expr : SExpr,
-) -> ReadOnlyArray[(String, SurfaceExpr)] raise SmlError {
+fn parse_bindings(expr : SExpr) -> Array[(String, SurfaceExpr)] raise SmlError {
   match expr {
     List(items) => items.map(parse_binding)
     _ => raise SurfaceError("let bindings must be a list")
@@ -356,8 +367,8 @@ fn parse_special_form(
       )
     }
     "fn" => {
-      guard tail.length() >= 2 else {
-        raise SurfaceError("fn expects parameters and a body")
+      guard tail.length() >= 1 else {
+        raise SurfaceError("fn expects parameters")
       }
       Fn(parse_params(tail[0]), parse_body(tail[1:]))
     }
@@ -365,14 +376,8 @@ fn parse_special_form(
       raise SurfaceError(
         "let declarations are only allowed in a declaration sequence",
       )
-    "do" => {
-      guard tail.length() > 0 else {
-        raise SurfaceError("do expects at least one expression")
-      }
-      parse_body(tail)
-    }
-    _ =>
-      Call(Var(head), ReadOnlyArray::from_array(tail.map(parse_surface_expr)))
+    "do" => parse_body(tail)
+    _ => Call(Var(head), tail.map(parse_surface_expr))
   }
 }
 
@@ -388,10 +393,7 @@ pub fn parse_surface_expr(expr : SExpr) -> SurfaceExpr raise SmlError {
         [] => raise SurfaceError("empty list is not a valid expression")
         [Atom(Symbol(head)), .. tail] => parse_special_form(head, tail)
         [func, .. args] =>
-          Call(
-            parse_surface_expr(func),
-            ReadOnlyArray::from_array(args.map(parse_surface_expr)),
-          )
+          Call(parse_surface_expr(func), args.map(parse_surface_expr))
       }
   }
 }
@@ -399,14 +401,12 @@ pub fn parse_surface_expr(expr : SExpr) -> SurfaceExpr raise SmlError {
 ///|
 fn parse_decl(expr : SExpr) -> SurfaceDecl? raise SmlError {
   match expr {
-    List([Atom(Symbol("let")), Atom(Symbol(name)), .. tail]) if tail.length() >
-      0 => Some(SurfaceDecl::Let(name, parse_body(tail)))
+    List([Atom(Symbol("let")), target, .. tail]) => {
+      let (name, value) = parse_decl_name_and_value(target, tail)
+      Some(SurfaceDecl::Let(name, value))
+    }
     List([Atom(Symbol("let&")), .. bindings]) if bindings.length() > 0 =>
-      Some(
-        SurfaceDecl::LetAnd(
-          parse_bindings(List(ReadOnlyArray::from_array(bindings))),
-        ),
-      )
+      Some(SurfaceDecl::LetAnd(parse_bindings(List(bindings.to_owned()))))
     _ => None
   }
 }
@@ -420,7 +420,7 @@ fn parse_stmt(expr : SExpr) -> SurfaceStmt raise SmlError {
 }
 
 ///|
-fn parse_block(forms : ReadOnlyArray[SExpr]) -> SurfaceExpr raise SmlError {
+fn parse_block(forms : Array[SExpr]) -> SurfaceExpr raise SmlError {
   guard forms.length() > 0 else {
     raise SurfaceError("expected at least one form")
   }
@@ -436,7 +436,11 @@ fn parse_block(forms : ReadOnlyArray[SExpr]) -> SurfaceExpr raise SmlError {
 
 ///|
 fn parse_body(forms : ArrayView[SExpr]) -> SurfaceExpr raise SmlError {
-  parse_block(ReadOnlyArray::from_array(forms.to_owned()))
+  if forms.length() == 0 {
+    Block([])
+  } else {
+    parse_block(forms.to_owned())
+  }
 }
 
 ///|
@@ -469,7 +473,7 @@ fn desugar_decl_to_let(decl : SurfaceDecl, body : CoreExpr) -> CoreExpr {
   match decl {
     SurfaceDecl::Let(name, value) => {
       let binding = [(name, desugar_expr(value))]
-      CoreExpr::Let(ReadOnlyArray::from_array(binding), body)
+      CoreExpr::Let(binding, body)
     }
     SurfaceDecl::LetAnd(bindings) =>
       CoreExpr::Let(
@@ -480,7 +484,7 @@ fn desugar_decl_to_let(decl : SurfaceDecl, body : CoreExpr) -> CoreExpr {
 }
 
 ///|
-fn desugar_block(stmts : ReadOnlyArray[SurfaceStmt]) -> CoreExpr {
+fn desugar_block(stmts : Array[SurfaceStmt]) -> CoreExpr {
   guard stmts.length() > 0 else { return CoreExpr::Unit }
   let mut result = match stmts[stmts.length() - 1] {
     SurfaceStmt::Decl(decl) => desugar_decl_to_let(decl, CoreExpr::Unit)
@@ -492,7 +496,7 @@ fn desugar_block(stmts : ReadOnlyArray[SurfaceStmt]) -> CoreExpr {
       SurfaceStmt::Decl(decl) => result = desugar_decl_to_let(decl, result)
       SurfaceStmt::Expr(expr) => {
         let binding = [("_", desugar_expr(expr))]
-        result = CoreExpr::Let(ReadOnlyArray::from_array(binding), result)
+        result = CoreExpr::Let(binding, result)
       }
     }
   }
@@ -515,10 +519,7 @@ fn env_empty() -> Env {
 }
 
 ///|
-fn env_extend(
-  parent : Env,
-  bindings_to_add : ReadOnlyArray[(String, Value)],
-) -> Env {
+fn env_extend(parent : Env, bindings_to_add : Array[(String, Value)]) -> Env {
   bindings_to_add.fold(init=parent, (bindings, binding) => {
     bindings.add(binding.0, binding.1)
   })
@@ -526,9 +527,9 @@ fn env_extend(
 
 ///|
 fn eval_let_bindings(
-  bindings : ReadOnlyArray[(String, CoreExpr)],
+  bindings : Array[(String, CoreExpr)],
   env : Env,
-) -> ReadOnlyArray[(String, Value)] raise SmlError {
+) -> Array[(String, Value)] raise SmlError {
   bindings.map(binding => (binding.0, eval_core(binding.1, env~)))
 }
 
@@ -567,7 +568,7 @@ fn expect_bool(value : Value) -> Bool raise SmlError {
 ///|
 fn expect_exact_arity(
   name : String,
-  args : ReadOnlyArray[Value],
+  args : Array[Value],
   expected : Int,
 ) -> Unit raise SmlError {
   guard args.length() == expected else {
@@ -598,17 +599,17 @@ fn value_to_say_string(value : Value) -> String {
 }
 
 ///|
-fn say_values(args : ReadOnlyArray[Value]) -> Unit {
+fn say_values(args : Array[Value]) -> Unit {
   println(args.map(value_to_say_string).join(" "))
 }
 
 ///|
-fn add_int_values(args : ReadOnlyArray[Value]) -> Value raise SmlError {
+fn add_int_values(args : Array[Value]) -> Value raise SmlError {
   Int(args.fold(init=0, (total, arg) => total + expect_int(arg)))
 }
 
 ///|
-fn sub_int_values(args : ReadOnlyArray[Value]) -> Value raise SmlError {
+fn sub_int_values(args : Array[Value]) -> Value raise SmlError {
   match args {
     [] => raise RuntimeError("builtin - expects at least 1 argument")
     [first] => Int(-expect_int(first))
@@ -622,12 +623,12 @@ fn sub_int_values(args : ReadOnlyArray[Value]) -> Value raise SmlError {
 }
 
 ///|
-fn mul_int_values(args : ReadOnlyArray[Value]) -> Value raise SmlError {
+fn mul_int_values(args : Array[Value]) -> Value raise SmlError {
   Int(args.fold(init=1, (total, arg) => total * expect_int(arg)))
 }
 
 ///|
-fn div_int_values(args : ReadOnlyArray[Value]) -> Value raise SmlError {
+fn div_int_values(args : Array[Value]) -> Value raise SmlError {
   match args {
     [] | [_] => raise RuntimeError("builtin / expects at least 2 arguments")
     [first, .. rest] =>
@@ -640,15 +641,12 @@ fn div_int_values(args : ReadOnlyArray[Value]) -> Value raise SmlError {
 }
 
 ///|
-fn concat_values(args : ReadOnlyArray[Value]) -> Value {
+fn concat_values(args : Array[Value]) -> Value {
   String(args.map(value_to_say_string).join(""))
 }
 
 ///|
-fn apply_builtin(
-  name : String,
-  args : ReadOnlyArray[Value],
-) -> Value raise SmlError {
+fn apply_builtin(name : String, args : Array[Value]) -> Value raise SmlError {
   match name {
     "+" => add_int_values(args)
     "++" => concat_values(args)
@@ -688,7 +686,7 @@ fn apply_builtin(
 }
 
 ///|
-fn apply(func : Value, args : ReadOnlyArray[Value]) -> Value raise SmlError {
+fn apply(func : Value, args : Array[Value]) -> Value raise SmlError {
   match func {
     Builtin(name) => apply_builtin(name, args)
     Closure(closure) => {
@@ -702,10 +700,7 @@ fn apply(func : Value, args : ReadOnlyArray[Value]) -> Value raise SmlError {
           (closure.params[i], args[i])
         }
       ]
-      eval_core(
-        closure.body,
-        env=env_extend(closure.env, ReadOnlyArray::from_array(bindings)),
-      )
+      eval_core(closure.body, env=env_extend(closure.env, bindings))
     }
     _ => raise RuntimeError("attempted to call a non-function value")
   }

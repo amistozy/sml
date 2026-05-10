@@ -33,7 +33,7 @@ pub impl Show for SmlError
 
 // Types and methods
 pub struct Closure {
-  params : ReadOnlyArray[String]
+  params : Array[String]
   body : CoreExpr
   env : @sorted_map.SortedMap[String, Value]
 }
@@ -45,9 +45,9 @@ pub enum CoreExpr {
   Unit
   Var(String)
   If(CoreExpr, CoreExpr, CoreExpr)
-  Let(ReadOnlyArray[(String, CoreExpr)], CoreExpr)
-  Fn(ReadOnlyArray[String], CoreExpr)
-  Call(CoreExpr, ReadOnlyArray[CoreExpr])
+  Let(Array[(String, CoreExpr)], CoreExpr)
+  Fn(Array[String], CoreExpr)
+  Call(CoreExpr, Array[CoreExpr])
 } derive(Eq, @debug.Debug)
 
 pub enum SAtom {
@@ -59,12 +59,12 @@ pub enum SAtom {
 
 pub enum SExpr {
   Atom(SAtom)
-  List(ReadOnlyArray[SExpr])
+  List(Array[SExpr])
 } derive(Eq, @debug.Debug)
 
 pub enum SurfaceDecl {
   Let(String, SurfaceExpr)
-  LetAnd(ReadOnlyArray[(String, SurfaceExpr)])
+  LetAnd(Array[(String, SurfaceExpr)])
 } derive(Eq, @debug.Debug)
 
 pub enum SurfaceExpr {
@@ -73,9 +73,9 @@ pub enum SurfaceExpr {
   String(String)
   Var(String)
   If(SurfaceExpr, SurfaceExpr, SurfaceExpr)
-  Block(ReadOnlyArray[SurfaceStmt])
-  Fn(ReadOnlyArray[String], SurfaceExpr)
-  Call(SurfaceExpr, ReadOnlyArray[SurfaceExpr])
+  Block(Array[SurfaceStmt])
+  Fn(Array[String], SurfaceExpr)
+  Call(SurfaceExpr, Array[SurfaceExpr])
 } derive(Eq, @debug.Debug)
 
 pub enum SurfaceStmt {
