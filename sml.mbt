@@ -312,14 +312,20 @@ fn expect_symbol_atom(expr : SExpr) -> String raise SmlError {
 ///|
 fn parse_params(expr : SExpr) -> ReadOnlyArray[String] raise SmlError {
   match expr {
-    List(items) => {
-      let params = []
-      for item in items {
-        params.push(expect_symbol_atom(item))
-      }
-      ReadOnlyArray::from_array(params)
-    }
+    List(items) => items.map(expect_symbol_atom)
     _ => raise SurfaceError("function parameter list must be a list")
+  }
+}
+
+///|
+fn parse_binding(item : SExpr) -> (String, SurfaceExpr) raise SmlError {
+  match item {
+    List(pair) if pair.length() >= 2 => {
+      let name = expect_symbol_atom(pair[0])
+      let value = parse_body(pair[1:])
+      (name, value)
+    }
+    _ => raise SurfaceError("binding must have shape (name expr)")
   }
 }
 
@@ -328,20 +334,7 @@ fn parse_bindings(
   expr : SExpr,
 ) -> ReadOnlyArray[(String, SurfaceExpr)] raise SmlError {
   match expr {
-    List(items) => {
-      let bindings = []
-      for item in items {
-        match item {
-          List(pair) if pair.length() >= 2 => {
-            let name = expect_symbol_atom(pair[0])
-            let value = parse_body(pair[1:])
-            bindings.push((name, value))
-          }
-          _ => raise SurfaceError("binding must have shape (name expr)")
-        }
-      }
-      ReadOnlyArray::from_array(bindings)
-    }
+    List(items) => items.map(parse_binding)
     _ => raise SurfaceError("let bindings must be a list")
   }
 }
@@ -526,11 +519,9 @@ fn env_extend(
   parent : Env,
   bindings_to_add : ReadOnlyArray[(String, Value)],
 ) -> Env {
-  let mut bindings = parent
-  for binding in bindings_to_add {
-    bindings = bindings.add(binding.0, binding.1)
-  }
-  bindings
+  bindings_to_add.fold(init=parent, (bindings, binding) => {
+    bindings.add(binding.0, binding.1)
+  })
 }
 
 ///|
@@ -538,11 +529,7 @@ fn eval_let_bindings(
   bindings : ReadOnlyArray[(String, CoreExpr)],
   env : Env,
 ) -> ReadOnlyArray[(String, Value)] raise SmlError {
-  let evaluated = []
-  for binding in bindings {
-    evaluated.push((binding.0, eval_core(binding.1, env~)))
-  }
-  ReadOnlyArray::from_array(evaluated)
+  bindings.map(binding => (binding.0, eval_core(binding.1, env~)))
 }
 
 ///|
@@ -555,11 +542,10 @@ fn env_lookup(env : Env, name : String) -> Value raise SmlError {
 
 ///|
 fn base_env() -> Env {
-  let mut env = env_empty()
-  for name in ["+", "-", "*", "/", "=", "<", ">", "<=", ">=", "not", "say"] {
-    env = env.add(name, Builtin(name))
-  }
-  env
+  ["+", "++", "-", "*", "/", "=", "<", ">", "<=", ">=", "not", "say"].fold(
+    init=env_empty(),
+    (env, name) => env.add(name, Builtin(name)),
+  )
 }
 
 ///|
@@ -613,11 +599,49 @@ fn value_to_say_string(value : Value) -> String {
 
 ///|
 fn say_values(args : ReadOnlyArray[Value]) -> Unit {
-  let parts = []
-  for arg in args {
-    parts.push(value_to_say_string(arg))
+  println(args.map(value_to_say_string).join(" "))
+}
+
+///|
+fn add_int_values(args : ReadOnlyArray[Value]) -> Value raise SmlError {
+  Int(args.fold(init=0, (total, arg) => total + expect_int(arg)))
+}
+
+///|
+fn sub_int_values(args : ReadOnlyArray[Value]) -> Value raise SmlError {
+  match args {
+    [] => raise RuntimeError("builtin - expects at least 1 argument")
+    [first] => Int(-expect_int(first))
+    [first, .. rest] =>
+      Int(
+        rest.fold(init=expect_int(first), (total, arg) => {
+          total - expect_int(arg)
+        }),
+      )
   }
-  println(parts.join(" "))
+}
+
+///|
+fn mul_int_values(args : ReadOnlyArray[Value]) -> Value raise SmlError {
+  Int(args.fold(init=1, (total, arg) => total * expect_int(arg)))
+}
+
+///|
+fn div_int_values(args : ReadOnlyArray[Value]) -> Value raise SmlError {
+  match args {
+    [] | [_] => raise RuntimeError("builtin / expects at least 2 arguments")
+    [first, .. rest] =>
+      Int(
+        rest.fold(init=expect_int(first), (total, arg) => {
+          total / expect_int(arg)
+        }),
+      )
+  }
+}
+
+///|
+fn concat_values(args : ReadOnlyArray[Value]) -> Value {
+  String(args.map(value_to_say_string).join(""))
 }
 
 ///|
@@ -626,45 +650,11 @@ fn apply_builtin(
   args : ReadOnlyArray[Value],
 ) -> Value raise SmlError {
   match name {
-    "+" => {
-      let mut total = 0
-      for arg in args {
-        total = total + expect_int(arg)
-      }
-      Int(total)
-    }
-    "-" => {
-      guard args.length() > 0 else {
-        raise RuntimeError("builtin - expects at least 1 argument")
-      }
-      let first = expect_int(args[0])
-      if args.length() == 1 {
-        Int(-first)
-      } else {
-        let mut total = first
-        for i = 1; i < args.length(); i = i + 1 {
-          total = total - expect_int(args[i])
-        }
-        Int(total)
-      }
-    }
-    "*" => {
-      let mut total = 1
-      for arg in args {
-        total = total * expect_int(arg)
-      }
-      Int(total)
-    }
-    "/" => {
-      guard args.length() >= 2 else {
-        raise RuntimeError("builtin / expects at least 2 arguments")
-      }
-      let mut total = expect_int(args[0])
-      for i = 1; i < args.length(); i = i + 1 {
-        total = total / expect_int(args[i])
-      }
-      Int(total)
-    }
+    "+" => add_int_values(args)
+    "++" => concat_values(args)
+    "-" => sub_int_values(args)
+    "*" => mul_int_values(args)
+    "/" => div_int_values(args)
     "=" => {
       expect_exact_arity("=", args, 2)
       Bool(value_eq(args[0], args[1]))

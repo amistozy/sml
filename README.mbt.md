@@ -116,6 +116,7 @@ bindings cannot refer to one another.
 The runtime currently provides:
 
 - Arithmetic: `+`, `-`, `*`, `/`
+- Concatenation: `++`
 - Comparison: `=`, `<`, `>`, `<=`, `>=`
 - Boolean: `not`
 - Output: `say`
@@ -127,6 +128,19 @@ space.
 (let name "Alice")
 (let age 18)
 (say name "is" age "years old.")
+```
+
+`+` is integer addition:
+
+```lisp
+(+ 1 2 3)
+```
+
+`++` concatenates values by converting each argument to text first:
+
+```lisp
+(++ "foo" "bar" "baz")
+(++ "age: " 18)
 ```
 
 ## CLI

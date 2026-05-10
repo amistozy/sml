@@ -6,6 +6,28 @@ test "evaluate arithmetic and nested calls" {
 }
 
 ///|
+test "double plus concatenates strings" {
+  let program =
+    #|(++ "foo" "bar" "baz")
+  assert_eq(@sml.run_to_string(program), "\"foobarbaz\"")
+}
+
+///|
+test "double plus stringifies non string arguments" {
+  let program =
+    #|(++ "foo" 1 true)
+  assert_eq(@sml.run_to_string(program), "\"foo1true\"")
+}
+
+///|
+test "plus rejects string arguments" {
+  let program =
+    #|(+ "foo" 1)
+  let result = try? @sml.run_to_string(program)
+  assert_true(result is Err(@sml.RuntimeError(_)))
+}
+
+///|
 test "parallel let evaluates rhs in original environment" {
   let program =
     #|(let& (x 10) (y (+ x 5)))
