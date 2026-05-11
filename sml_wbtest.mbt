@@ -75,11 +75,13 @@ test "function let declaration parses as fn sugar" {
 ///|
 test "empty bodies parse as empty blocks" {
   let let_surface = parse_surface("(let x)")
+  let begin_surface = parse_surface_expr(parse_sexp("(begin)"))
   let do_surface = parse_surface_expr(parse_sexp("(do)"))
   let fn_surface = parse_surface_expr(parse_sexp("(fn ())"))
   let let_and_surface = parse_surface("(let& (x))")
   assert_true(let_surface is Block([Decl(SurfaceDecl::Let("x", Block([])))]))
-  assert_true(do_surface is Block([]))
+  assert_true(begin_surface is Block([]))
+  assert_true(do_surface is Fn([], Block([])))
   assert_true(fn_surface is Fn([], Block([])))
   assert_true(
     let_and_surface is Block([Decl(SurfaceDecl::LetAnd([("x", Block([]))]))]),
@@ -295,7 +297,7 @@ test "say call keeps all arguments in order" {
 ///|
 test "ref primitives parse as ordinary calls" {
   let program =
-    #|(do
+    #|(begin
     #|  (:= r (ref 1))
     #|  (! r))
   let surface = parse_surface(program)
@@ -341,6 +343,23 @@ test "underscore binding is preserved in surface fn params" {
   let surface = parse_surface_expr(parse_sexp("(fn (x _ z) (+ x z))"))
   assert_true(
     surface is Fn(["x", "_", "z"], Call(Var("+"), [Var("x"), Var("z")])),
+  )
+}
+
+///|
+test "do parses as zero argument lambda sugar" {
+  let surface = parse_surface_expr(parse_sexp("(do (let x 1) (+ x 2))"))
+  assert_true(
+    surface
+    is Fn(
+      [],
+      Block(
+        [
+          Decl(SurfaceDecl::Let("x", Int(1))),
+          Expr(Call(Var("+"), [Var("x"), Int(2)])),
+        ]
+      )
+    ),
   )
 }
 

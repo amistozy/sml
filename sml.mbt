@@ -420,7 +420,8 @@ fn parse_special_form(
       raise SurfaceError(
         "declarations are only allowed in a declaration sequence",
       )
-    "do" => parse_body(tail)
+    "do" => Fn([], parse_body(tail))
+    "begin" => parse_body(tail)
     _ => Call(Var(head), tail.map(parse_subexpr))
   }
 }

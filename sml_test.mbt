@@ -69,7 +69,7 @@ test "empty bodies evaluate to unit" {
   let program =
     #|(let x)
     #|(let (f))
-    #|(do)
+    #|(begin)
     #|((fn ()))
   assert_eq(@sml.run_to_string(program), "()")
 }
@@ -159,9 +159,9 @@ test "block can appear in function body" {
 }
 
 ///|
-test "block can appear in do" {
+test "block can appear in begin" {
   let program =
-    #|(do
+    #|(begin
     #|  (let x 1)
     #|  (say x)
     #|  (let y (+ x 1))
@@ -180,12 +180,21 @@ test "say accepts multiple arguments" {
 }
 
 ///|
-test "if and do work together" {
+test "if and begin work together" {
   let program =
-    #|(do
+    #|(begin
     #|  (if (> 3 2) 7 8)
     #|  (if (not false) 9 0))
   assert_eq(@sml.run_to_string(program), "9")
+}
+
+///|
+test "do is zero argument lambda sugar" {
+  let program =
+    #|((do
+    #|   (let x 1)
+    #|   (+ x 2)))
+  assert_eq(@sml.run_to_string(program), "3")
 }
 
 ///|

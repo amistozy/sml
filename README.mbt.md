@@ -85,13 +85,33 @@ the block result. If the final form is a declaration, the block evaluates to
 `()`.
 
 ```lisp
-(let x 1)
-(say x)
-(let y (+ x 1))
-(+ x y)
+(begin
+  (let x 1)
+  (say x)
+  (let y (+ x 1))
+  (+ x y))
 ```
 
-Block bodies are also supported inside `fn` and `do`.
+`begin` is the explicit block form. Block bodies are also supported inside
+`fn` and `do`.
+
+### Zero-Argument Functions
+
+`do` is sugar for a zero-argument function:
+
+```lisp
+(do
+  (let x 1)
+  (+ x 2))
+```
+
+For example:
+
+```lisp
+((do
+   (let x 1)
+   (+ x 2)))
+```
 
 ### Bindings
 
