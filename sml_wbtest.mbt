@@ -311,6 +311,40 @@ test "ref primitives parse as ordinary calls" {
 }
 
 ///|
+test "placeholder shorthand expands to single argument fn" {
+  let surface = parse_surface_expr(parse_sexp("(+ _ 1)"))
+  assert_true(surface is Fn(["__arg"], Call(Var("+"), [Var("__arg"), Int(1)])))
+}
+
+///|
+test "placeholder shorthand reuses one argument for repeated placeholders" {
+  let surface = parse_surface_expr(parse_sexp("(+ _ _)"))
+  assert_true(
+    surface is Fn(["__arg"], Call(Var("+"), [Var("__arg"), Var("__arg")])),
+  )
+}
+
+///|
+test "placeholder shorthand only wraps the smallest nested call" {
+  let surface = parse_surface_expr(parse_sexp("(+ 1 (* _ 2))"))
+  assert_true(
+    surface
+    is Call(
+      Var("+"),
+      [Int(1), Fn(["__arg"], Call(Var("*"), [Var("__arg"), Int(2)]))]
+    ),
+  )
+}
+
+///|
+test "underscore binding is preserved in surface fn params" {
+  let surface = parse_surface_expr(parse_sexp("(fn (x _ z) (+ x z))"))
+  assert_true(
+    surface is Fn(["x", "_", "z"], Call(Var("+"), [Var("x"), Var("z")])),
+  )
+}
+
+///|
 test "parallel let declaration desugars to multi binding core let" {
   let program =
     #|(let& (x 1) (y 2))

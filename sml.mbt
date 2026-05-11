@@ -408,11 +408,7 @@ fn parse_special_form(
       guard tail.length() == 3 else {
         raise SurfaceError("if expects 3 arguments")
       }
-      If(
-        parse_surface_expr(tail[0]),
-        parse_surface_expr(tail[1]),
-        parse_surface_expr(tail[2]),
-      )
+      If(parse_subexpr(tail[0]), parse_subexpr(tail[1]), parse_subexpr(tail[2]))
     }
     "fn" => {
       guard tail.length() >= 1 else {
@@ -425,12 +421,12 @@ fn parse_special_form(
         "declarations are only allowed in a declaration sequence",
       )
     "do" => parse_body(tail)
-    _ => Call(Var(head), tail.map(parse_surface_expr))
+    _ => Call(Var(head), tail.map(parse_subexpr))
   }
 }
 
 ///|
-pub fn parse_surface_expr(expr : SExpr) -> SurfaceExpr raise SmlError {
+fn parse_surface_expr_raw(expr : SExpr) -> SurfaceExpr raise SmlError {
   match expr {
     Atom(Int(value)) => Int(value)
     Atom(Bool(value)) => Bool(value)
@@ -440,9 +436,96 @@ pub fn parse_surface_expr(expr : SExpr) -> SurfaceExpr raise SmlError {
       match items {
         [] => raise SurfaceError("empty list is not a valid expression")
         [Atom(Symbol(head)), .. tail] => parse_special_form(head, tail)
-        [func, .. args] =>
-          Call(parse_surface_expr(func), args.map(parse_surface_expr))
+        [func, .. args] => Call(parse_subexpr(func), args.map(parse_subexpr))
       }
+  }
+}
+
+///|
+fn is_bare_placeholder(expr : SurfaceExpr) -> Bool {
+  expr is Var("_")
+}
+
+///|
+fn replace_bare_placeholder(expr : SurfaceExpr) -> SurfaceExpr {
+  if is_bare_placeholder(expr) {
+    Var("__arg")
+  } else {
+    expr
+  }
+}
+
+///|
+fn wrap_if_placeholder(
+  cond : SurfaceExpr,
+  then_branch : SurfaceExpr,
+  else_branch : SurfaceExpr,
+) -> SurfaceExpr {
+  Fn(
+    ["__arg"],
+    SurfaceExpr::If(
+      replace_bare_placeholder(cond),
+      replace_bare_placeholder(then_branch),
+      replace_bare_placeholder(else_branch),
+    ),
+  )
+}
+
+///|
+fn wrap_call_placeholder(
+  func : SurfaceExpr,
+  args : ArrayView[SurfaceExpr],
+) -> SurfaceExpr {
+  Fn(
+    ["__arg"],
+    SurfaceExpr::Call(
+      replace_bare_placeholder(func),
+      args.map(replace_bare_placeholder),
+    ),
+  )
+}
+
+///|
+fn expand_placeholder_expr(expr : SurfaceExpr) -> SurfaceExpr raise SmlError {
+  match expr {
+    If(cond, then_branch, else_branch) => {
+      let cond = expand_placeholder_expr(cond)
+      let then_branch = expand_placeholder_expr(then_branch)
+      let else_branch = expand_placeholder_expr(else_branch)
+      if is_bare_placeholder(cond) ||
+        is_bare_placeholder(then_branch) ||
+        is_bare_placeholder(else_branch) {
+        wrap_if_placeholder(cond, then_branch, else_branch)
+      } else {
+        SurfaceExpr::If(cond, then_branch, else_branch)
+      }
+    }
+    Call(func, args) => {
+      let func = expand_placeholder_expr(func)
+      let args = args.map(arg => expand_placeholder_expr(arg))
+      if is_bare_placeholder(func) || args.any(is_bare_placeholder) {
+        wrap_call_placeholder(func, args)
+      } else {
+        SurfaceExpr::Call(func, args)
+      }
+    }
+    _ => expr
+  }
+}
+
+///|
+fn parse_subexpr(expr : SExpr) -> SurfaceExpr raise SmlError {
+  expr |> parse_surface_expr_raw |> expand_placeholder_expr
+}
+
+///|
+pub fn parse_surface_expr(expr : SExpr) -> SurfaceExpr raise SmlError {
+  match parse_subexpr(expr) {
+    Var("_") =>
+      raise SurfaceError(
+        "placeholder \"_\" must appear inside a compound expression",
+      )
+    expr => expr
   }
 }
 
@@ -576,7 +659,11 @@ fn env_extend(
   bindings_to_add : ArrayView[(String, Value)],
 ) -> Env {
   bindings_to_add.fold(init=parent, (bindings, binding) => {
-    bindings.add(binding.0, binding.1)
+    if binding.0 == "_" {
+      bindings
+    } else {
+      bindings.add(binding.0, binding.1)
+    }
   })
 }
 
@@ -802,7 +889,9 @@ fn apply(func : Value, args : ArrayView[Value]) -> Value raise SmlError {
           "function expects \{closure.params.length()} arguments, got \{args.length()}",
         )
       }
-      let bindings = [ for i, param in closure.params => (param, args[i]) ]
+      let bindings = [
+        for i, param in closure.params if param != "_" => (param, args[i])
+      ]
       eval_core(closure.body, env=env_extend(closure.env, bindings))
     }
     _ => raise RuntimeError("attempted to call a non-function value")

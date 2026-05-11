@@ -230,3 +230,65 @@ test "deref rejects non refs" {
   let result = try? @sml.run_to_string("(! 1)")
   assert_true(result is Err(@sml.RuntimeError(_)))
 }
+
+///|
+test "placeholder shorthand builds a single argument lambda" {
+  let program =
+    #|((+ _ 1) 41)
+  assert_eq(@sml.run_to_string(program), "42")
+}
+
+///|
+test "placeholder shorthand only rewrites the innermost expression" {
+  let program =
+    #|(let add1 (+ _ 1))
+    #|(add1 41)
+  assert_eq(@sml.run_to_string(program), "42")
+}
+
+///|
+test "placeholder shorthand wraps the smallest nested call" {
+  let program =
+    #|(let (apply f)
+    #|  (+ 1 (f 21)))
+    #|(apply (* _ 2))
+  assert_eq(@sml.run_to_string(program), "43")
+}
+
+///|
+test "placeholder shorthand wraps nested argument expressions" {
+  let program =
+    #|(let pred (> _ 0))
+    #|(if (pred 1) 7 8)
+  assert_eq(@sml.run_to_string(program), "7")
+}
+
+///|
+test "placeholder shorthand reuses the same argument for repeated placeholders" {
+  let program =
+    #|((+ _ _) 21)
+  assert_eq(@sml.run_to_string(program), "42")
+}
+
+///|
+test "placeholder shorthand rejects a bare underscore expression" {
+  let result = try? @sml.run_to_string("_")
+  assert_true(result is Err(@sml.SurfaceError(_)))
+}
+
+///|
+test "underscore let binding ignores the bound value" {
+  let program =
+    #|(let x 1)
+    #|(let _ 2)
+    #|x
+  assert_eq(@sml.run_to_string(program), "1")
+}
+
+///|
+test "underscore function parameter is ignored" {
+  let program =
+    #|(let x 10)
+    #|((fn (_ y) (+ x y)) 99 2)
+  assert_eq(@sml.run_to_string(program), "12")
+}

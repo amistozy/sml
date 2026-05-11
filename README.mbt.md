@@ -23,6 +23,7 @@ example of parser and evaluator design in MoonBit.
 - Sequential `let` declarations
 - Parallel `let&` declarations
 - Lexical closures with immutable environments
+- Single-argument lambda shorthand with `_`
 - Public entry points for each compilation stage
 
 ## Public API
@@ -111,6 +112,27 @@ Parallel declarations:
 
 `let&` evaluates all right-hand sides in the original environment, so sibling
 bindings cannot refer to one another.
+
+The `_` name is treated specially in binding position and means "ignore this
+binding":
+
+```lisp
+(let _ 42)
+((fn (x _ z) (+ x z)) 1 999 2)
+```
+
+In expression position, `_` can appear exactly once inside a compound
+expression as shorthand for a single-argument lambda:
+
+```lisp
+(+ _ 1)
+```
+
+This expands to:
+
+```lisp
+(fn (x) (+ x 1))
+```
 
 ## Built-in Functions
 
