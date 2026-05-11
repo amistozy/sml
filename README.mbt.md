@@ -1,8 +1,7 @@
 # amistozy/sml
 
 `amistozy/sml` is an S-expression-based ML-like language implemented in
-MoonBit. In this repository, `SML` means "S-expression-based ML-like
-language", not Standard ML.
+MoonBit.
 
 The package is both a small runnable language and a compact example of how to
 build a parser, a surface language, a lowering pass, and an evaluator in
