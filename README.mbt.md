@@ -90,25 +90,23 @@ Blocks are also used inside function bodies and declaration right-hand sides.
 `do` is sugar for a zero-argument function:
 
 ```lisp
-(do
-  (let x 1)
-  (+ x 2))
+(let next
+  (do
+    (let x 1)
+    (+ x 2)))
+
+(next)
 ```
 
-For example:
+This is equivalent to:
 
 ```lisp
-((do
-   (let x 1)
-   (+ x 2)))
-```
+(let next
+  (fn ()
+    (let x 1)
+    (+ x 2)))
 
-is equivalent to:
-
-```lisp
-((fn ()
-   (let x 1)
-   (+ x 2)))
+(next)
 ```
 
 ### Bindings
