@@ -1,34 +1,26 @@
 # amistozy/sml
 
 `amistozy/sml` is an S-expression-based ML-like language implemented in
-MoonBit. In this project, `SML` means "S-expression-based ML-like language",
-not Standard ML.
+MoonBit. In this repository, `SML` means "S-expression-based ML-like
+language", not Standard ML.
 
-The package is structured as a small language pipeline:
+The package is both a small runnable language and a compact example of how to
+build a parser, a surface language, a lowering pass, and an evaluator in
+MoonBit.
 
-- parse raw source into S-expressions
-- parse S-expressions into a surface language
-- lower surface syntax into a small core language
-- evaluate core expressions
+## Pipeline
 
-This makes the project useful both as a runnable language and as a compact
-example of parser and evaluator design in MoonBit.
+The implementation is organized as a simple pipeline:
 
-## Features
+- parse source text into `SExpr`
+- parse `SExpr` into `SurfaceExpr`
+- lower `SurfaceExpr` into `CoreExpr`
+- evaluate `CoreExpr` into `Value`
 
-- S-expression syntax with line comments
-- Integers, booleans, strings, variables, functions, calls, and `if`
-- Mutable references with `ref`, `!`, `:=`, and `%=`
-- Multi-form blocks
-- Sequential `let` declarations
-- Parallel `let&` declarations
-- Lexical closures with immutable environments
-- Single-argument lambda shorthand with `_`
-- Public entry points for each compilation stage
+The public API exposes each stage, so you can inspect intermediate forms as
+well as run complete programs.
 
 ## Public API
-
-The package exposes these main functions:
 
 - `parse_sexp(source) -> SExpr`
 - `parse_surface(source) -> SurfaceExpr`
@@ -39,11 +31,11 @@ The package exposes these main functions:
 - `run(source) -> Value`
 - `run_to_string(source) -> String`
 
-## Example
+## Quick Example
 
 ```moonbit nocheck
 ///|
-test "evaluate a small program" {
+test "run a small program" {
   let program =
     #|(let x 10)
     #|(let y (+ x 5))
@@ -76,13 +68,13 @@ false
 ((fn (x y z) (+ x y z)) 4 5 3)
 ```
 
-Functions are non-curried: arguments are passed in a single call.
+Functions are non-curried: one call supplies the full parameter list.
 
 ### Blocks
 
-Multiple forms at the same level are parsed as a block. The last expression is
-the block result. If the final form is a declaration, the block evaluates to
-`()`.
+`begin` is the explicit block form. A block evaluates its forms in order and
+returns the value of the last expression. If the final form is a declaration,
+the block evaluates to `()`.
 
 ```lisp
 (begin
@@ -92,10 +84,9 @@ the block result. If the final form is a declaration, the block evaluates to
   (+ x y))
 ```
 
-`begin` is the explicit block form. Block bodies are also supported inside
-`fn` and `do`.
+Blocks are also used inside function bodies and declaration right-hand sides.
 
-### Zero-Argument Functions
+### Zero-Argument Function Sugar
 
 `do` is sugar for a zero-argument function:
 
@@ -109,6 +100,14 @@ For example:
 
 ```lisp
 ((do
+   (let x 1)
+   (+ x 2)))
+```
+
+is equivalent to:
+
+```lisp
+((fn ()
    (let x 1)
    (+ x 2)))
 ```
@@ -133,26 +132,82 @@ Parallel declarations:
 `let&` evaluates all right-hand sides in the original environment, so sibling
 bindings cannot refer to one another.
 
-The `_` name is treated specially in binding position and means "ignore this
-binding":
+Recursive function declarations:
+
+```lisp
+(letrec (fact n)
+  (if (= n 0)
+    1
+    (* n (fact (- n 1)))))
+
+(fact 5)
+```
+
+Mutually recursive function declarations:
+
+```lisp
+(letrec&
+  ((even n)
+   (if (= n 0) true (odd (- n 1))))
+  ((odd n)
+   (if (= n 0) false (even (- n 1)))))
+
+(even 10)
+```
+
+### Ignored Bindings
+
+`_` means "ignore this binding" when it appears in binding position:
 
 ```lisp
 (let _ 42)
 ((fn (x _ z) (+ x z)) 1 999 2)
 ```
 
-In expression position, `_` can appear exactly once inside a compound
-expression as shorthand for a single-argument lambda:
+Ignored bindings are not inserted into the runtime environment.
+
+### Placeholder Lambda Shorthand
+
+In expression position, `_` is a placeholder for a single implicit argument.
+The smallest `if` or function call that directly contains `_` is rewritten into
+a one-argument function.
 
 ```lisp
 (+ _ 1)
 ```
 
-This expands to:
+expands to:
 
 ```lisp
-(fn (x) (+ x 1))
+(fn (__arg) (+ __arg 1))
 ```
+
+Repeated placeholders within the same shorthand expression all refer to the
+same argument:
+
+```lisp
+(+ _ _)
+```
+
+expands to:
+
+```lisp
+(fn (__arg) (+ __arg __arg))
+```
+
+Nested shorthand is expanded bottom-up. For example:
+
+```lisp
+(+ 1 (* _ 2))
+```
+
+becomes:
+
+```lisp
+(+ 1 (fn (__arg) (* __arg 2)))
+```
+
+A bare `_` is not a valid complete expression.
 
 ## Built-in Functions
 
@@ -165,16 +220,9 @@ The runtime currently provides:
 - References: `ref`, `!`, `:=`, `%=` 
 - Output: `say`
 
-`say` accepts zero or more arguments and prints them separated by a single
-space.
+### Arithmetic
 
-```lisp
-(let name "Alice")
-(let age 18)
-(say name "is" age "years old.")
-```
-
-`+` is integer addition:
+`+` performs integer addition:
 
 ```lisp
 (+ 1 2 3)
@@ -186,6 +234,19 @@ space.
 (++ "foo" "bar" "baz")
 (++ "age: " 18)
 ```
+
+### Output
+
+`say` accepts zero or more arguments and prints them separated by a single
+space.
+
+```lisp
+(let name "Alice")
+(let age 18)
+(say name "is" age "years old.")
+```
+
+### References
 
 References are mutable cells:
 
@@ -206,10 +267,10 @@ References are mutable cells:
 
 ## CLI
 
-The project includes a CLI package at `cmd/main`. It uses subcommands for each
-stage of the pipeline.
+The repository includes a CLI in `cmd/main` with subcommands for each pipeline
+stage.
 
-Evaluate a program from an inline expression:
+Evaluate an inline program:
 
 ```bash
 moon run cmd/main -- run -e "(+ 1 (* 2 3) 4)"
@@ -218,10 +279,10 @@ moon run cmd/main -- run -e "(+ 1 (* 2 3) 4)"
 Evaluate a program from a file:
 
 ```bash
-moon run cmd/main -- run examples/program.sml
+moon run cmd/main -- run play.sml
 ```
 
-Inspect the parsed S-expression AST:
+Inspect the parsed S-expression tree:
 
 ```bash
 moon run cmd/main -- sexp -e "(+ 1 2)"
@@ -239,10 +300,10 @@ Inspect the lowered core AST:
 moon run cmd/main -- core -e "(let x 1) (+ x 2)"
 ```
 
-Each stage accepts exactly one input source:
+Each subcommand accepts exactly one input source:
 
-- `-e <expr>` to read source from the command line
-- `<path>` to read source from a file
+- `-e <expr>` reads source from the command line
+- `<path>` reads source from a file
 
 ## Development
 
