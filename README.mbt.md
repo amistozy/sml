@@ -264,6 +264,8 @@ Run tests:
 moon test
 ```
 
+VS Code syntax highlighting lives in `vscode-extension/`.
+
 ## Notes
 
 - Comments start with `;` and continue to the end of the line

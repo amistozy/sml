@@ -1,0 +1,36 @@
+{
+  "name": "sml-sexp-language",
+  "displayName": "SML (S-expression ML-like)",
+  "description": "Syntax highlighting for the S-expression-based ML-like language used in this repository.",
+  "version": "0.0.1",
+  "publisher": "amistozy",
+  "license": "Apache-2.0",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "sml-sexp",
+        "aliases": [
+          "SML",
+          "S-expression ML-like"
+        ],
+        "extensions": [
+          ".sml"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "sml-sexp",
+        "scopeName": "source.sml-sexp",
+        "path": "./syntaxes/sml.tmLanguage.json"
+      }
+    ]
+  }
+}

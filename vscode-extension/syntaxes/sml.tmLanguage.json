@@ -1,0 +1,102 @@
+{
+  "name": "SML (S-expression ML-like)",
+  "scopeName": "source.sml-sexp",
+  "patterns": [
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#string"
+    },
+    {
+      "include": "#number"
+    },
+    {
+      "include": "#boolean"
+    },
+    {
+      "include": "#special-forms"
+    },
+    {
+      "include": "#builtins"
+    },
+    {
+      "include": "#placeholder"
+    },
+    {
+      "include": "#symbol"
+    },
+    {
+      "include": "#paren"
+    }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.semicolon.sml-sexp",
+      "match": ";.*$"
+    },
+    "string": {
+      "name": "string.quoted.double.sml-sexp",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.sml-sexp",
+          "match": "\\\\[nrt\"\\\\]"
+        }
+      ]
+    },
+    "number": {
+      "name": "constant.numeric.integer.sml-sexp",
+      "match": "(?<![^()\\s])[-+]?\\d+(?![^()\\s])"
+    },
+    "boolean": {
+      "name": "constant.language.boolean.sml-sexp",
+      "match": "(?<![^()\\s])(true|false)(?![^()\\s])"
+    },
+    "special-forms": {
+      "patterns": [
+        {
+          "name": "keyword.control.sml-sexp",
+          "match": "(?<![^()\\s])(if|fn|do|begin|let|let&|letrec|letrec&)(?![^()\\s])"
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        {
+          "name": "support.function.builtin.sml-sexp",
+          "match": "(?<=\\(|\\s)(say|not|ref)(?=\\)|\\s)"
+        },
+        {
+          "name": "keyword.operator.assignment.sml-sexp",
+          "match": "(?<=\\(|\\s)(%=|:=)(?=\\)|\\s)"
+        },
+        {
+          "name": "keyword.operator.arithmetic.sml-sexp",
+          "match": "(?<=\\(|\\s)(\\+\\+|\\+|\\-|\\*|/)(?=\\)|\\s)"
+        },
+        {
+          "name": "keyword.operator.comparison.sml-sexp",
+          "match": "(?<=\\(|\\s)(<=|>=|=|<|>)(?=\\)|\\s)"
+        },
+        {
+          "name": "keyword.operator.logical.sml-sexp",
+          "match": "(?<=\\(|\\s)!(?=\\)|\\s)"
+        }
+      ]
+    },
+    "placeholder": {
+      "name": "variable.language.placeholder.sml-sexp",
+      "match": "(?<=\\(|\\s)_(?=\\)|\\s)"
+    },
+    "symbol": {
+      "name": "variable.other.symbol.sml-sexp",
+      "match": "(?<![^()\\s\";])[A-Za-z][A-Za-z0-9_!?%&*+\\-./:<=>]*"
+    },
+    "paren": {
+      "name": "punctuation.section.parens.sml-sexp",
+      "match": "[()]"
+    }
+  }
+}
