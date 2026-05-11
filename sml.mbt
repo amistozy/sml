@@ -85,17 +85,12 @@ pub struct Closure {
 }
 
 ///|
-pub struct RefValue {
-  mut value : Value
-}
-
-///|
 pub enum Value {
   Int(Int)
   Bool(Bool)
   String(String)
   Unit
-  Ref(RefValue)
+  Ref(mut value~ : Value)
   Closure(Closure)
   Builtin(String)
 }
@@ -114,7 +109,7 @@ pub impl Show for Value with output(self, logger) {
       logger.write_string("\"")
     }
     Unit => logger.write_string("()")
-    Ref(cell) => {
+    Ref(_) as cell => {
       logger.write_string("ref(")
       logger.write_object(cell.value)
       logger.write_string(")")
@@ -709,14 +704,6 @@ fn expect_bool(value : Value) -> Bool raise SmlError {
 }
 
 ///|
-fn expect_ref(value : Value) -> RefValue raise SmlError {
-  match value {
-    Ref(cell) => cell
-    _ => raise RuntimeError("expected ref")
-  }
-}
-
-///|
 fn expect_exact_arity(
   name : String,
   args : ArrayView[Value],
@@ -799,21 +786,28 @@ fn concat_values(args : ArrayView[Value]) -> Value {
 ///|
 fn make_ref(args : ArrayView[Value]) -> Value raise SmlError {
   expect_exact_arity("ref", args, 1)
-  Ref({ value: args[0] })
+  Ref(value=args[0])
 }
 
 ///|
 fn deref_value(args : ArrayView[Value]) -> Value raise SmlError {
   expect_exact_arity("!", args, 1)
-  expect_ref(args[0]).value
+  match args[0] {
+    Ref(value~) => value
+    _ => raise RuntimeError("expected ref")
+  }
 }
 
 ///|
 fn assign_ref(args : ArrayView[Value]) -> Value raise SmlError {
   expect_exact_arity(":=", args, 2)
-  let cell = expect_ref(args[0])
-  cell.value = args[1]
-  Unit
+  match args[0] {
+    Ref(_) as cell => {
+      cell.value = args[1]
+      Unit
+    }
+    _ => raise RuntimeError("expected ref")
+  }
 }
 
 ///|

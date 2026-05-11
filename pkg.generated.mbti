@@ -51,10 +51,6 @@ pub enum CoreExpr {
   Call(CoreExpr, Array[CoreExpr])
 } derive(Eq, @debug.Debug)
 
-pub struct RefValue {
-  mut value : Value
-}
-
 pub enum SAtom {
   Int(Int)
   Bool(Bool)
@@ -95,7 +91,7 @@ pub enum Value {
   Bool(Bool)
   String(String)
   Unit
-  Ref(RefValue)
+  Ref(mut value~ : Value)
   Closure(Closure)
   Builtin(String)
 }
