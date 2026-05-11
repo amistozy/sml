@@ -310,3 +310,17 @@ test "underscore function parameter is ignored" {
     #|((fn (_ y) (+ x y)) 99 2)
   assert_eq(@sml.run_to_string(program), "12")
 }
+
+///|
+test "Man or Boy test" {
+  let program =
+    #|(letrec (a k x1 x2 x3 x4 x5)
+    #|  (let m (ref k))
+    #|  (letrec (b)
+    #|    (%= m (- _ 1))
+    #|    (a (! m) b x1 x2 x3 x4))
+    #|  (if (<= k 0) (+ (x4) (x5)) (b)))
+    #|
+    #|(a 10 (do 1) (do -1) (do -1) (do 1) (do 0))
+  assert_eq(@sml.run_to_string(program), "-67")
+}

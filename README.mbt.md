@@ -32,15 +32,22 @@ well as run complete programs.
 
 ## Quick Example
 
+The following program is a version of Knuth's "Man or Boy" test:
+
 ```moonbit nocheck
 ///|
-test "run a small program" {
+test "Man or Boy test" {
   let program =
-    #|(let x 10)
-    #|(let y (+ x 5))
-    #|(+ x y)
+    #|(letrec (a k x1 x2 x3 x4 x5)
+    #|  (let m (ref k))
+    #|  (letrec (b)
+    #|    (%= m (- _ 1))
+    #|    (a (! m) b x1 x2 x3 x4))
+    #|  (if (<= k 0) (+ (x4) (x5)) (b)))
+    #|
+    #|(a 10 (do 1) (do -1) (do -1) (do 1) (do 0))
 
-  assert_eq(@sml.run_to_string(program), "25")
+  assert_eq(@sml.run_to_string(program), "-67")
 }
 ```
 
