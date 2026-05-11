@@ -313,6 +313,18 @@ test "ref primitives parse as ordinary calls" {
 }
 
 ///|
+test "percent equals parses as ordinary call" {
+  let surface = parse_surface_expr(parse_sexp("(%= r (+ _ 1))"))
+  assert_true(
+    surface
+    is Call(
+      Var("%="),
+      [Var("r"), Fn(["__arg"], Call(Var("+"), [Var("__arg"), Int(1)]))]
+    ),
+  )
+}
+
+///|
 test "placeholder shorthand expands to single argument fn" {
   let surface = parse_surface_expr(parse_sexp("(+ _ 1)"))
   assert_true(surface is Fn(["__arg"], Call(Var("+"), [Var("__arg"), Int(1)])))

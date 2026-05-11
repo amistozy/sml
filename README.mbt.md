@@ -18,7 +18,7 @@ example of parser and evaluator design in MoonBit.
 
 - S-expression syntax with line comments
 - Integers, booleans, strings, variables, functions, calls, and `if`
-- Mutable references with `ref`, `!`, and `:=`
+- Mutable references with `ref`, `!`, `:=`, and `%=`
 - Multi-form blocks
 - Sequential `let` declarations
 - Parallel `let&` declarations
@@ -162,7 +162,7 @@ The runtime currently provides:
 - Concatenation: `++`
 - Comparison: `=`, `<`, `>`, `<=`, `>=`
 - Boolean: `not`
-- References: `ref`, `!`, `:=`
+- References: `ref`, `!`, `:=`, `%=` 
 - Output: `say`
 
 `say` accepts zero or more arguments and prints them separated by a single
@@ -193,6 +193,14 @@ References are mutable cells:
 (let r (ref 1))
 (! r)
 (:= r 2)
+(! r)
+```
+
+`%=` updates a reference by applying a unary function to its current value:
+
+```lisp
+(let r (ref 42))
+(%= r (+ _ 1))
 (! r)
 ```
 

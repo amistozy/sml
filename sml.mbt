@@ -683,7 +683,7 @@ fn env_lookup(env : Env, name : String) -> Value raise SmlError {
 fn base_env() -> Env {
   [
     "+", "++", "-", "*", "/", "=", "<", ">", "<=", ">=", "not", "say", "ref", "!",
-    ":=",
+    ":=", "%=",
   ].fold(init=env_empty(), (env, name) => env.add(name, Builtin(name)))
 }
 
@@ -811,6 +811,18 @@ fn assign_ref(args : ArrayView[Value]) -> Value raise SmlError {
 }
 
 ///|
+fn update_ref(args : ArrayView[Value]) -> Value raise SmlError {
+  expect_exact_arity("%=", args, 2)
+  match args[0] {
+    Ref(_) as cell => {
+      cell.value = apply(args[1], [cell.value])
+      Unit
+    }
+    _ => raise RuntimeError("expected ref")
+  }
+}
+
+///|
 fn eval_letrec_bindings(
   bindings : ArrayView[(String, Array[String], CoreExpr)],
   env : Env,
@@ -839,6 +851,7 @@ fn apply_builtin(
     "ref" => make_ref(args)
     "!" => deref_value(args)
     ":=" => assign_ref(args)
+    "%=" => update_ref(args)
     "-" => sub_int_values(args)
     "*" => mul_int_values(args)
     "/" => div_int_values(args)

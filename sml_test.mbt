@@ -235,6 +235,15 @@ test "ref updates are visible through closures" {
 }
 
 ///|
+test "ref percent equals updates through a unary function" {
+  let program =
+    #|(let r (ref 42))
+    #|(%= r (+ _ 1))
+    #|(! r)
+  assert_eq(@sml.run_to_string(program), "43")
+}
+
+///|
 test "deref rejects non refs" {
   let result = try? @sml.run_to_string("(! 1)")
   assert_true(result is Err(@sml.RuntimeError(_)))
